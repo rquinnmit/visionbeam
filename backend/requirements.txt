@@ -5,3 +5,5 @@ scipy
 pyserial
 PySide6
 matplotlib
+fastapi
+uvicorn[standard]
