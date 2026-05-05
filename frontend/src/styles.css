@@ -64,3 +64,92 @@ body {
   inset: 0;
   cursor: crosshair;
 }
+
+.mode-toggle {
+  display: inline-flex;
+  border: 1px solid #444;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.mode-toggle button {
+  border: 0;
+  border-radius: 0;
+  background: #222;
+  color: #aaa;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.mode-toggle button.active {
+  background: #ffcc00;
+  color: #000;
+}
+
+.cal-panel {
+  width: min(900px, 100%);
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cal-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cal-row label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.cal-row input[type="range"] {
+  flex: 1;
+}
+
+.cal-val {
+  min-width: 60px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: #ddd;
+}
+
+.cal-actions {
+  flex-wrap: wrap;
+}
+
+.cal-actions button {
+  background: #222;
+  color: #eee;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.cal-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cal-hint {
+  font-size: 12px;
+  color: #888;
+  flex: 1;
+}
+
+.cal-status {
+  font-size: 12px;
+  color: #aaa;
+  gap: 16px;
+}
+
+.cal-status .ok { color: #6f6; }
+.cal-status .no { color: #f66; }

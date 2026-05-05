@@ -37,6 +37,14 @@ class Track:
     def center(self) -> tuple[float, float]:
         return ((self.x1 + self.x2) / 2.0, (self.y1 + self.y2) / 2.0)
 
+    @property
+    def feet(self) -> tuple[float, float]:
+        """Bottom-center of the bbox — where the person is standing."""
+        return ((self.x1 + self.x2) / 2.0, self.y2)
+
+    def contains(self, x: float, y: float) -> bool:
+        return self.x1 <= x <= self.x2 and self.y1 <= y <= self.y2
+
 
 class HybridMethod(TargetMethod):
     """
@@ -123,11 +131,11 @@ class HybridMethod(TargetMethod):
                         x2=float(box[2]), y2=float(box[3]),
                     ))
 
-        # Lock-on path: target = centroid of the locked track's box.
+        # Lock-on path: target = bottom-center of the locked track's box (feet).
         if self._locked_id is not None:
             for t in self._tracks:
                 if t.id == self._locked_id:
-                    return t.center
+                    return t.feet
             # Locked ID not in current detections — no target this frame.
             return None
 
@@ -169,6 +177,12 @@ class HybridMethod(TargetMethod):
         )
 
         _, _, _, max_loc = cv2.minMaxLoc(heatmap)
-        sx, sy = max_loc
+        peak_x = max_loc[0] / scale
+        peak_y = max_loc[1] / scale
 
-        return sx / scale, sy / scale
+        # Snap the auto-target to the feet of the bbox containing the peak,
+        # so the beam lands on the floor where the person is standing.
+        for t in self._tracks:
+            if t.contains(peak_x, peak_y):
+                return t.feet
+        return peak_x, peak_y

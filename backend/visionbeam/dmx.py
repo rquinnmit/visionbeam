@@ -164,3 +164,29 @@ class DMXConnection:
         """
         with self._lock:
             self._frame = bytearray(DMX_UNIVERSE_SIZE + 1)
+
+
+class MockDMX:
+    """
+    No-op stand-in for DMXConnection used when no hardware is attached.
+
+    Records the last commanded pan/tilt so the server can echo it back to
+    the UI. Implements the same surface as DMXConnection.
+    """
+    def __init__(self, fixture: FixtureProfile | None = None):
+        self.fixture = fixture
+        self.last_pan: float | None = None
+        self.last_tilt: float | None = None
+
+    def set_channel(self, name: str, value: int): pass
+    def set_defaults(self, **kwargs: int): pass
+
+    def aim(self, pan_deg: float, tilt_deg: float):
+        self.last_pan = pan_deg
+        self.last_tilt = tilt_deg
+
+    def start(self): pass
+    def stop(self): pass
+    def blackout(self):
+        self.last_pan = None
+        self.last_tilt = None

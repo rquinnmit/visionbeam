@@ -24,6 +24,7 @@ Thumbs.db
 # Venue-specific calibration (copy from *.example.json in repo)
 backend/calibration/homography.json
 backend/calibration/mount.json
+backend/calibration/aim.json
 
 # Frontend
 frontend/node_modules/

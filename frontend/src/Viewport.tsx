@@ -4,11 +4,11 @@ import type { DetectionResult, Track } from "./types";
 interface Props {
   stream: MediaStream | null;
   detection: DetectionResult | null;
-  onLock: (trackId: number | null) => void;
+  onClick: (px: number, py: number, hitId: number | null) => void;
   videoRef: React.RefObject<HTMLVideoElement | null>;
 }
 
-export function Viewport({ stream, detection, onLock, videoRef }: Props) {
+export function Viewport({ stream, detection, onClick, videoRef }: Props) {
   const overlayRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -30,14 +30,10 @@ export function Viewport({ stream, detection, onLock, videoRef }: Props) {
     const canvas = overlayRef.current;
     if (!canvas || !detection) return;
     const rect = canvas.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) * canvas.width) / rect.width;
-    const y = ((e.clientY - rect.top) * canvas.height) / rect.height;
-    const hit = hitTest(detection.tracks, x, y);
-    if (hit !== null) {
-      onLock(detection.locked_id === hit ? null : hit);
-    } else {
-      onLock(null);
-    }
+    const px = ((e.clientX - rect.left) * canvas.width) / rect.width;
+    const py = ((e.clientY - rect.top) * canvas.height) / rect.height;
+    const hit = hitTest(detection.tracks, px, py);
+    onClick(px, py, hit);
   }
 
   return (
@@ -90,5 +86,26 @@ function drawOverlay(canvas: HTMLCanvasElement, det: DetectionResult) {
     ctx.moveTo(tx, ty - 18);
     ctx.lineTo(tx, ty + 18);
     ctx.stroke();
+  }
+
+  if (det.beam_px) {
+    const [bx, by] = det.beam_px;
+    // Cyan glow representing the (simulated) beam landing point.
+    ctx.fillStyle = "rgba(0, 220, 255, 0.25)";
+    ctx.beginPath();
+    ctx.arc(bx, by, 28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#00dcff";
+    ctx.beginPath();
+    ctx.arc(bx, by, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#00dcff";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(bx, by, 16, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = "#00dcff";
+    ctx.font = "12px ui-sans-serif, system-ui, sans-serif";
+    ctx.fillText("BEAM (sim)", bx + 22, by - 18);
   }
 }

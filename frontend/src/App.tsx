@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CalibrationPanel } from "./CalibrationPanel";
 import { captureJpeg, listVideoDevices, openCamera, stopStream } from "./camera";
 import { Viewport } from "./Viewport";
-import type { ControlMessage, DetectionResult } from "./types";
+import type { ControlMessage, DetectionResult, Mode } from "./types";
 
 const WS_URL =
   (import.meta.env.VITE_WS_URL as string | undefined) ??
   "ws://127.0.0.1:8000/ws/detect";
+
+const PAN_RANGE = 540;
+const TILT_RANGE = 270;
+const DEFAULT_PAN = PAN_RANGE / 2;
+const DEFAULT_TILT = TILT_RANGE / 2;
 
 type WsState = "connecting" | "open" | "closed";
 
@@ -15,6 +21,9 @@ export default function App() {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [wsState, setWsState] = useState<WsState>("connecting");
   const [detection, setDetection] = useState<DetectionResult | null>(null);
+  const [mode, setMode] = useState<Mode>("run");
+  const [calPan, setCalPan] = useState(DEFAULT_PAN);
+  const [calTilt, setCalTilt] = useState(DEFAULT_TILT);
 
   const wsRef = useRef<WebSocket | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -23,7 +32,6 @@ export default function App() {
   );
   const inFlightRef = useRef(false);
 
-  // Initial: request a generic stream (unlocks device labels), then enumerate.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -37,8 +45,7 @@ export default function App() {
         const list = await listVideoDevices();
         if (cancelled) return;
         setDevices(list);
-        const activeTrack = initial.getVideoTracks()[0];
-        const activeId = activeTrack?.getSettings().deviceId;
+        const activeId = initial.getVideoTracks()[0]?.getSettings().deviceId;
         if (activeId) setDeviceId(activeId);
       } catch (err) {
         console.error("camera init failed", err);
@@ -49,7 +56,6 @@ export default function App() {
     };
   }, []);
 
-  // Switch streams when the user picks a different camera.
   useEffect(() => {
     if (!deviceId) return;
     const current = stream?.getVideoTracks()[0]?.getSettings().deviceId;
@@ -73,7 +79,6 @@ export default function App() {
     };
   }, [deviceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Open the WebSocket once.
   useEffect(() => {
     const ws = new WebSocket(WS_URL);
     ws.binaryType = "arraybuffer";
@@ -113,7 +118,6 @@ export default function App() {
     ws.send(await blob.arrayBuffer());
   }, []);
 
-  // Kick the loop when both stream + ws are ready.
   useEffect(() => {
     if (wsState !== "open" || !stream) return;
     const video = videoRef.current;
@@ -130,18 +134,83 @@ export default function App() {
     ws.send(JSON.stringify(msg));
   }, []);
 
-  const handleLock = useCallback(
-    (trackId: number | null) => {
-      if (trackId === null) {
+  const setLockOptimistic = useCallback((id: number | null) => {
+    setDetection((d) => (d ? { ...d, locked_id: id } : d));
+  }, []);
+
+  const handleViewportClick = useCallback(
+    (px: number, py: number, hitId: number | null) => {
+      if (mode === "calibrate") {
+        sendControl({
+          type: "calibrate_sample",
+          pan: calPan,
+          tilt: calTilt,
+          px,
+          py,
+        });
+        return;
+      }
+      // run mode: lock/unlock
+      if (hitId === null) {
         sendControl({ type: "unlock" });
-        setDetection((d) => (d ? { ...d, locked_id: null } : d));
+        setLockOptimistic(null);
+      } else if (detection?.locked_id === hitId) {
+        sendControl({ type: "unlock" });
+        setLockOptimistic(null);
       } else {
-        sendControl({ type: "lock", track_id: trackId });
-        setDetection((d) => (d ? { ...d, locked_id: trackId } : d));
+        sendControl({ type: "lock", track_id: hitId });
+        setLockOptimistic(hitId);
       }
     },
-    [sendControl],
+    [mode, calPan, calTilt, detection?.locked_id, sendControl, setLockOptimistic],
   );
+
+  const handleModeChange = useCallback(
+    (next: Mode) => {
+      setMode(next);
+      // Disable auto-aim while calibrating so the live aim doesn't fight
+      // the manual sliders.
+      sendControl({ type: "auto_aim", enabled: next === "run" });
+      if (next === "calibrate") {
+        sendControl({ type: "aim", pan: calPan, tilt: calTilt });
+      }
+    },
+    [calPan, calTilt, sendControl],
+  );
+
+  const handlePanChange = useCallback(
+    (pan: number) => {
+      setCalPan(pan);
+      sendControl({ type: "aim", pan, tilt: calTilt });
+    },
+    [calTilt, sendControl],
+  );
+
+  const handleTiltChange = useCallback(
+    (tilt: number) => {
+      setCalTilt(tilt);
+      sendControl({ type: "aim", pan: calPan, tilt });
+    },
+    [calPan, sendControl],
+  );
+
+  const handleOffScreen = useCallback(() => {
+    sendControl({
+      type: "calibrate_sample",
+      pan: calPan,
+      tilt: calTilt,
+      px: null,
+      py: null,
+    });
+  }, [calPan, calTilt, sendControl]);
+
+  const handleFit = useCallback(() => {
+    sendControl({ type: "calibration_fit" });
+  }, [sendControl]);
+
+  const handleClear = useCallback(() => {
+    sendControl({ type: "calibration_clear" });
+  }, [sendControl]);
 
   return (
     <div className="app">
@@ -163,14 +232,59 @@ export default function App() {
         <span className={`status ${wsState === "open" ? "connected" : "disconnected"}`}>
           ws: {wsState}
         </span>
-        {detection?.locked_id != null && (
-          <button onClick={() => handleLock(null)}>Unlock #{detection.locked_id}</button>
+        <div className="mode-toggle">
+          <button
+            className={mode === "run" ? "active" : ""}
+            onClick={() => handleModeChange("run")}
+          >
+            Run
+          </button>
+          <button
+            className={mode === "calibrate" ? "active" : ""}
+            onClick={() => handleModeChange("calibrate")}
+          >
+            Calibrate
+          </button>
+        </div>
+        {detection && (
+          <span className="status">
+            dmx: {detection.dmx_type}
+            {detection.pan != null && detection.tilt != null
+              ? ` · aim ${detection.pan.toFixed(1)}° / ${detection.tilt.toFixed(1)}°`
+              : ""}
+          </span>
+        )}
+        {mode === "run" && detection?.locked_id != null && (
+          <button
+            onClick={() => {
+              sendControl({ type: "unlock" });
+              setLockOptimistic(null);
+            }}
+          >
+            Unlock #{detection.locked_id}
+          </button>
         )}
       </div>
+
+      {mode === "calibrate" && detection && (
+        <CalibrationPanel
+          pan={calPan}
+          tilt={calTilt}
+          panRange={PAN_RANGE}
+          tiltRange={TILT_RANGE}
+          status={detection.calibration}
+          onPanChange={handlePanChange}
+          onTiltChange={handleTiltChange}
+          onOffScreen={handleOffScreen}
+          onFit={handleFit}
+          onClear={handleClear}
+        />
+      )}
+
       <Viewport
         stream={stream}
         detection={detection}
-        onLock={handleLock}
+        onClick={handleViewportClick}
         videoRef={videoRef}
       />
     </div>
