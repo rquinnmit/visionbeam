@@ -44,5 +44,19 @@ coverage/
 # Logs
 *.log
 
-# Visualization step dumps from visionbeam.viz.save_step
-data/viz_steps/
+# Recorded clips, ground truth, viz step dumps — large / regeneratable
+backend/data/
+
+# Evaluation outputs — regeneratable from clips + code
+backend/results/
+
+# Model weights — auto-downloaded by ultralytics on first run
+*.pt
+
+# LaTeX build artifacts (logs are already covered by *.log)
+*.aux
+*.fdb_latexmk
+*.fls
+*.out
+*.toc
+*.synctex.gz

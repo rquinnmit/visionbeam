@@ -79,7 +79,7 @@ Use **`--camera 1`** (etc.) if the default device is wrong. On macOS, DMX serial
 Record clips, extract marker-based ground truth, run metrics, then plot figures.
 
 ```bash
-mkdir -p data/clips data/gt results figures
+mkdir -p data/clips data/gt data/figures results
 
 # Record one clip per lighting condition (interactive prompts between takes)
 python -m evaluation.record --camera 0 --output data/clips --duration 30
@@ -101,7 +101,7 @@ python -m evaluation.evaluate \
   --calibration calibration/homography.json \
   --output results
 
-python -m evaluation.visualize --results results --output figures
+python -m evaluation.visualize --results results --output data/figures
 ```
 
 Optional: **`--trajectory-clip <stem>`** on `visualize` (filename without `.mp4`) for a specific trajectory plot.

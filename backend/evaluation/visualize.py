@@ -17,7 +17,7 @@ publication-ready matplotlib figures:
 All figures are saved as both PNG (for the report) and PDF (for LaTeX).
 
 Usage:
-    python -m evaluation.visualize --results results/ --output figures/
+    python -m evaluation.visualize --results results/ --output data/figures/
 """
 
 import argparse
@@ -249,7 +249,7 @@ def main():
     parser = argparse.ArgumentParser(description="Generate evaluation figures")
     parser.add_argument("--results", type=str, default="results",
                         help="Directory containing evaluate.py output CSVs")
-    parser.add_argument("--output", type=str, default="figures",
+    parser.add_argument("--output", type=str, default="data/figures",
                         help="Output directory for figures")
     parser.add_argument("--trajectory-clip", type=str, default=None,
                         help="Clip name for trajectory plot "
