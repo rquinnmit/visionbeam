@@ -22,7 +22,6 @@ import numpy as np
 from ultralytics import YOLO
 
 from evaluation.methods import TargetMethod
-from visionbeam.viz import save_step
 
 
 @dataclass
@@ -60,7 +59,8 @@ class HybridMethod(TargetMethod):
     """
 
     def __init__(self, model_name: str = "yolov8n.pt", confidence: float = 0.3, detect_every_n: int = 2, blur_ksize: int = 31,
-                    diff_threshold: int = 25, min_motion_area: int = 100, scale_width: int = 320, beam_mask_radius: int = 40):
+                    diff_threshold: int = 25, min_motion_area: int = 100, scale_width: int = 320, beam_mask_radius: int = 40,
+                    snap_to_feet: bool = True):
         self._model = YOLO(model_name)
         self._confidence = confidence
         self._detect_every_n = detect_every_n
@@ -69,6 +69,10 @@ class HybridMethod(TargetMethod):
         self._min_motion_area = min_motion_area
         self._scale_width = scale_width
         self._beam_mask_radius = beam_mask_radius
+        # Deployment aims the beam at the floor (feet of the bbox containing
+        # the motion peak). For evaluation against a body-worn marker, set
+        # snap_to_feet=False so the raw heatmap peak is returned instead.
+        self._snap_to_feet = snap_to_feet
 
         self._prev_gray: np.ndarray | None = None
         self._frame_count: int = 0
@@ -109,16 +113,13 @@ class HybridMethod(TargetMethod):
         scale = self._scale_width / w
         small_h = int(h * scale)
         small = cv2.resize(frame, (self._scale_width, small_h))
-        save_step(small, "02_downscaled")
         gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-        save_step(gray, "03_grayscale")
 
         self._frame_count += 1
         if self._frame_count % self._detect_every_n == 0 or not self._tracks:
             results = self._model.track(
                 frame, persist=True, conf=self._confidence, classes=[0], verbose=False,
             )
-            save_step(results[0].plot(), "04_detection")
             boxes = results[0].boxes
             self._tracks = []
             if boxes is not None and len(boxes) > 0:
@@ -184,9 +185,8 @@ class HybridMethod(TargetMethod):
         peak_x = max_loc[0] / scale
         peak_y = max_loc[1] / scale
 
-        # Snap the auto-target to the feet of the bbox containing the peak,
-        # so the beam lands on the floor where the person is standing.
-        for t in self._tracks:
-            if t.contains(peak_x, peak_y):
-                return t.feet
+        if self._snap_to_feet:
+            for t in self._tracks:
+                if t.contains(peak_x, peak_y):
+                    return t.feet
         return peak_x, peak_y
