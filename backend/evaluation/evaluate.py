@@ -43,12 +43,17 @@ from evaluation.methods import (
 
 
 def build_methods() -> dict[str, TargetMethod]:
-    """Instantiate all methods to evaluate."""
+    """Instantiate all methods to evaluate.
+
+    Hybrid runs with snap_to_feet=False so the evaluation compares the raw
+    motion-heatmap peak against the other methods' pixel outputs (which all
+    return body-located points). Deployment still uses snap_to_feet=True.
+    """
     return {
         "frame_diff": FrameDiffMethod(),
         "farneback": FarnebackFlowMethod(),
         "detection": DetectionMethod(),
-        "hybrid": HybridMethod(),
+        "hybrid": HybridMethod(snap_to_feet=False),
     }
 
 
