@@ -21,7 +21,7 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 
-from evaluation.methods import TargetMethod
+from visionbeam.base import TargetMethod
 
 
 @dataclass

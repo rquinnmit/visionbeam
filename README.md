@@ -2,24 +2,23 @@
 
 ## Introduction
 
-VisionBeam is a vision-driven autonomous moving-head light that finds the most active dancer in a room and steers a real DMX fixture to follow them in real time. There are no body-worn beacons, no pre-programmed cues, and no specialized cameras: a webcam in the browser sends frames to a Python server, the server runs a hybrid YOLOv8 + ByteTrack + masked motion-heatmap tracker, and the resulting target pixel is mapped to fixture pan/tilt and pushed out over USB-to-DMX512.
+VisionBeam is a vision-driven autonomous light fixture that finds the most active person in a room and follows them in real time. There are no body-worn beacons, no pre-programmed cues, and no specialized cameras. A webcam in the browser sends frames to a Python server, the server runs a hybrid YOLOv8 + ByteTrack + masked motion-heatmap tracker, and the resulting target pixel is mapped to fixture pan/tilt and pushed out over USB-to-DMX512.
 
-The project also doubles as a research study for MIT 6.S058. The core question is whether combining a deep-learning person detector with classical motion analysis (the VisionBeam "hybrid" tracker) is genuinely more robust than either technique on its own when stage lighting is hostile — sweeping beams, color washes, the fixture lighting up the very floor it is trying to perceive. A self-contained evaluation harness records clips under four controlled lighting conditions, extracts ground truth from a colored marker, runs four target-selection methods on every clip, and writes accuracy / jitter / throughput metrics and figures. The findings are summarized in [`final_report/experiments_and_findings.md`](final_report/experiments_and_findings.md).
+The project was constructed MIT 6.S058 - Introduction to Computer Vision. The core question is whether combining a deep-learning person detector with classical motion analysis is genuinely more robust than either technique on its own when stage lighting is hostile. An evaluation harness records clips under four controlled lighting conditions, extracts ground truth from a colored marker, runs four target-selection methods on every clip, and writes accuracy / jitter / throughput metrics and figures.
 
 ## Project Structure
 
 ```
 backend/                            # Python: tracker, calibration, DMX, FastAPI server, eval
 ├── server.py                       # FastAPI + WebSocket: browser frames in, detections + DMX out
-├── main.py                         # Alternative local CLI runner (OpenCV preview + PySide stub)
 ├── requirements.txt
 ├── visionbeam/
+│   ├── base.py                     # TargetMethod ABC shared by the production tracker and baselines
 │   ├── tracker.py                  # HybridMethod: YOLOv8 + ByteTrack + person-masked motion heatmap
 │   ├── aim.py                      # PixelAimCalibration: quadratic pixel -> pan/tilt fit (live system)
 │   ├── dmx.py                      # USB-to-DMX512 serial driver, fixture profile, MockDMX fallback
 │   ├── calibration.py              # ArUco floor homography + light triangulation (offline eval)
-│   ├── ik.py                       # LightMount + floor->pan/tilt trig + EMA smoother (offline eval)
-│   └── pipeline.py                 # Threaded local pipeline (used by main.py)
+│   └── ik.py                       # LightMount + floor->pan/tilt trig + EMA smoother (offline eval)
 ├── evaluation/
 │   ├── methods.py                  # Baseline targets: frame diff, Farneback flow, detection-only
 │   ├── record.py                   # Records 4-condition lighting dataset from a webcam
@@ -150,17 +149,6 @@ cp backend/calibration/mount.example.json backend/calibration/mount.json
 
 The live system does not need either file — only `aim.json`, which is generated through the UI.
 
-### 5. Optional: local CLI runner without a browser
-
-A standalone OpenCV preview that wires `Pipeline` directly to a webcam and (optionally) DMX still exists at [`backend/main.py`](backend/main.py). It uses the older floor-homography + IK code path rather than the live `PixelAimCalibration`:
-
-```bash
-cd backend
-python main.py --no-dmx --camera 0
-```
-
-Press `q` to quit, `a` to toggle AUTO/MANUAL. This path is kept primarily for development / debugging the tracker without the browser stack; the production deployment is the `server.py` + React frontend combination above.
-
 ## Research Evaluation
 
 The evaluation pipeline lives entirely in `backend/evaluation/` and runs offline against pre-recorded clips. All four target-selection methods (the three baselines plus the hybrid) implement the same `TargetMethod` interface — given a frame, return a target pixel — so they can be compared apples-to-apples on the same recordings.
@@ -257,7 +245,6 @@ Full numbers, caveats, per-clip breakdowns, and outlier discussion are in [`fina
 * `numpy`, `scipy` — math, least-squares fitting (pixel-to-aim calibration and offline light triangulation).
 * `pyserial` — USB-to-DMX512 serial.
 * `matplotlib` — evaluation figures.
-* `PySide6` — declared in `requirements.txt` for legacy reasons (`visionbeam/ui.py` was the original Director's Station UI; the active deployment surface is now the React frontend).
 
 **Frontend (Node 18+):**
 

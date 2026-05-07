@@ -20,27 +20,11 @@ applies the homography transform to floor coordinates before computing
 metrics against ground truth.
 """
 
-from abc import ABC, abstractmethod
-
 import cv2
 import numpy as np
 from ultralytics import YOLO
 
-
-class TargetMethod(ABC):
-    """
-    Abstract base class for target selection methods.
-    """
-
-    @abstractmethod
-    def reset(self):
-        """Clear any internal state. Called between clips."""
-
-    @abstractmethod
-    def process_frame(self, frame: np.ndarray) -> tuple[float, float] | None:
-        """
-        Process a single BGR frame and return the target pixel coordinate.
-        """
+from visionbeam.base import TargetMethod
 
 
 class FrameDiffMethod(TargetMethod):

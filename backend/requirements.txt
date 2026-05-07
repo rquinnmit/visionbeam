@@ -1,9 +1,9 @@
+numpy
 opencv-contrib-python
 ultralytics
 torch
 scipy
 pyserial
-PySide6
 matplotlib
 fastapi
 uvicorn[standard]
