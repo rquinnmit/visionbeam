@@ -22,6 +22,7 @@ import numpy as np
 from ultralytics import YOLO
 
 from evaluation.methods import TargetMethod
+from visionbeam.viz import save_step
 
 
 @dataclass
@@ -108,13 +109,16 @@ class HybridMethod(TargetMethod):
         scale = self._scale_width / w
         small_h = int(h * scale)
         small = cv2.resize(frame, (self._scale_width, small_h))
+        save_step(small, "02_downscaled")
         gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+        save_step(gray, "03_grayscale")
 
         self._frame_count += 1
         if self._frame_count % self._detect_every_n == 0 or not self._tracks:
             results = self._model.track(
                 frame, persist=True, conf=self._confidence, classes=[0], verbose=False,
             )
+            save_step(results[0].plot(), "04_detection")
             boxes = results[0].boxes
             self._tracks = []
             if boxes is not None and len(boxes) > 0:

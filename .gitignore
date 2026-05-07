@@ -43,3 +43,6 @@ coverage/
 
 # Logs
 *.log
+
+# Visualization step dumps from visionbeam.viz.save_step
+data/viz_steps/

@@ -15,7 +15,7 @@ frame is flagged and linearly interpolated from neighbors. The output
 CSV has columns: frame_number, timestamp_ms, x_px, y_px, detected (bool).
 
 Usage:
-    python -m evaluation.ground_truth --video data/clips/ambient_01.mp4 \
+    python -m evaluation.ground_truth --video data/clips/external_static_01.mp4 \
                                       --mode color --output data/gt/
 """
 

@@ -28,13 +28,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-CONDITION_ORDER = ["ambient", "static_color", "slow_drift", "strobe", "moving_beam"]
+CONDITION_ORDER = [
+    "ambient",
+    "external_static",
+    "external_dynamic",
+    "fixture_external_dynamic",
+]
 CONDITION_LABELS = {
     "ambient": "Ambient",
-    "static_color": "Static Color",
-    "slow_drift": "Slow Drift",
-    "strobe": "Strobe",
-    "moving_beam": "Moving Beam",
+    "external_static": "External Light (Static)",
+    "external_dynamic": "External Light (Dynamic)",
+    "fixture_external_dynamic": "Fixture + External (Dynamic)",
 }
 METHOD_LABELS = {
     "frame_diff": "Frame Diff",
@@ -249,7 +253,7 @@ def main():
                         help="Output directory for figures")
     parser.add_argument("--trajectory-clip", type=str, default=None,
                         help="Clip name for trajectory plot "
-                             "(e.g., 'strobe_20260429_120000')")
+                             "(e.g., 'fixture_external_dynamic_20260429_120000')")
     parser.add_argument("--trajectory-start", type=int, default=0,
                         help="Start frame for trajectory window")
     parser.add_argument("--trajectory-frames", type=int, default=150,
