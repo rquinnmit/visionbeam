@@ -40,6 +40,14 @@ export type ControlMessage =
       py: number | null;
     }
   | { type: "calibration_fit" }
-  | { type: "calibration_clear" };
+  | { type: "calibration_clear" }
+  | {
+      type: "set_lamp";
+      dimmer?: number;
+      r?: number;
+      g?: number;
+      b?: number;
+      w?: number;
+    };
 
 export type Mode = "run" | "calibrate";

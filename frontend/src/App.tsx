@@ -134,6 +134,15 @@ export default function App() {
     ws.send(JSON.stringify(msg));
   }, []);
 
+  useEffect(() => {
+    if (wsState !== "open") return;
+    if (mode === "calibrate") {
+      sendControl({ type: "set_lamp", dimmer: 255, r: 0, g: 255, b: 0, w: 0 });
+    } else {
+      sendControl({ type: "set_lamp", dimmer: 255, r: 0, g: 0, b: 0, w: 255 });
+    }
+  }, [wsState, mode, sendControl]);
+
   const setLockOptimistic = useCallback((id: number | null) => {
     setDetection((d) => (d ? { ...d, locked_id: id } : d));
   }, []);
@@ -172,7 +181,10 @@ export default function App() {
       // the manual sliders.
       sendControl({ type: "auto_aim", enabled: next === "run" });
       if (next === "calibrate") {
+        sendControl({ type: "set_lamp", dimmer: 255, r: 0, g: 255, b: 0, w: 0 });
         sendControl({ type: "aim", pan: calPan, tilt: calTilt });
+      } else {
+        sendControl({ type: "set_lamp", dimmer: 255, r: 0, g: 0, b: 0, w: 255 });
       }
     },
     [calPan, calTilt, sendControl],

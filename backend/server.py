@@ -323,5 +323,28 @@ def _handle_control(text: str, conn: Connection) -> None:
             os.remove(CALIBRATION_PATH)
         logger.info("calibration cleared")
 
+    elif kind == "set_lamp":
+        if state.dmx is None:
+            return
+        fixture_channels = (
+            state.dmx.fixture.channels if state.dmx.fixture else {}
+        )
+        mapping = {
+            "dimmer": "dimmer",
+            "r": "red",
+            "g": "green",
+            "b": "blue",
+            "w": "white",
+        }
+        for key, channel_name in mapping.items():
+            value = msg.get(key)
+            if isinstance(value, (int, float)) and channel_name in fixture_channels:
+                state.dmx.set_channel(channel_name, int(value))
+        logger.info(
+            "set_lamp dimmer=%s r=%s g=%s b=%s w=%s",
+            msg.get("dimmer"), msg.get("r"), msg.get("g"),
+            msg.get("b"), msg.get("w"),
+        )
+
     else:
         logger.warning("unknown control type: %r", kind)
