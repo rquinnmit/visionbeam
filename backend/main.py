@@ -15,6 +15,7 @@ Usage:
 """
 
 import argparse
+import glob
 import queue
 import sys
 import cv2
@@ -25,9 +26,19 @@ from visionbeam.ik import LightMount
 from visionbeam.pipeline import Pipeline
 
 
-DEFAULT_FIXTURE = "config/fixture_default.json"
+DEFAULT_FIXTURE = "config/fixture_zq02360_15ch.json"
 DEFAULT_CALIBRATION = "calibration/homography.json"
 DEFAULT_MOUNT = "calibration/mount.json"
+
+
+def _autodetect_dmx_port() -> str:
+    candidates = sorted(
+        glob.glob("/dev/tty.usbserial-*")
+        + glob.glob("/dev/tty.usbmodem*")
+        + glob.glob("/dev/ttyUSB*")
+        + glob.glob("/dev/ttyACM*")
+    )
+    return candidates[0] if candidates else "/dev/ttyUSB0"
 
 
 def parse_args() -> argparse.Namespace:
@@ -40,8 +51,8 @@ def parse_args() -> argparse.Namespace:
                         help="Camera device index (default: 0)")
     parser.add_argument("--fixture", type=str, default=DEFAULT_FIXTURE,
                         help="Path to fixture profile JSON")
-    parser.add_argument("--dmx-port", type=str, default="/dev/ttyUSB0",
-                        help="Serial port for USB-to-DMX adapter")
+    parser.add_argument("--dmx-port", type=str, default=_autodetect_dmx_port(),
+                        help="Serial port for USB-to-DMX adapter (auto-detected if available)")
     parser.add_argument("--calibration", type=str, default=DEFAULT_CALIBRATION,
                         help="Path to saved homography JSON")
     parser.add_argument("--mount", type=str, default=DEFAULT_MOUNT,

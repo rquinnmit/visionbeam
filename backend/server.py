@@ -46,6 +46,7 @@ Run:
 
 from __future__ import annotations
 
+import glob
 import json
 import logging
 import os
@@ -88,8 +89,18 @@ logger = logging.getLogger("visionbeam.server")
 logging.basicConfig(level=logging.INFO)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_FIXTURE = os.path.join(HERE, "config", "fixture_default.json")
+DEFAULT_FIXTURE = os.path.join(HERE, "config", "fixture_zq02360_15ch.json")
 CALIBRATION_PATH = os.path.join(HERE, "calibration", "aim.json")
+
+
+def _autodetect_dmx_port() -> str | None:
+    candidates = sorted(
+        glob.glob("/dev/tty.usbserial-*")
+        + glob.glob("/dev/tty.usbmodem*")
+        + glob.glob("/dev/ttyUSB*")
+        + glob.glob("/dev/ttyACM*")
+    )
+    return candidates[0] if candidates else None
 
 
 class AppState:
@@ -110,19 +121,27 @@ async def lifespan(_: FastAPI):
         logger.info("DMX disabled (VISIONBEAM_NO_DMX set) — using MockDMX")
         state.dmx = MockDMX(fixture)
     else:
-        port = os.environ.get("VISIONBEAM_DMX_PORT", "/dev/ttyUSB0")
-        try:
-            logger.info("opening DMX on %s", port)
-            state.dmx = DMXConnection(port, fixture)
-            state.dmx.set_defaults(dimmer=255)
-            state.dmx.start()
-        except Exception as e:
+        port = os.environ.get("VISIONBEAM_DMX_PORT") or _autodetect_dmx_port()
+        if port is None:
             logger.warning(
-                "DMX open failed (%s); falling back to MockDMX. "
-                "Set VISIONBEAM_NO_DMX=1 to silence this warning.",
-                e,
+                "no USB-DMX adapter found (looked for /dev/tty.usbserial-*, "
+                "/dev/tty.usbmodem*, /dev/ttyUSB*, /dev/ttyACM*); "
+                "falling back to MockDMX"
             )
             state.dmx = MockDMX(fixture)
+        else:
+            try:
+                logger.info("opening DMX on %s", port)
+                state.dmx = DMXConnection(port, fixture)
+                state.dmx.set_defaults(dimmer=255)
+                state.dmx.start()
+            except Exception as e:
+                logger.warning(
+                    "DMX open failed (%s); falling back to MockDMX. "
+                    "Set VISIONBEAM_NO_DMX=1 to silence this warning.",
+                    e,
+                )
+                state.dmx = MockDMX(fixture)
 
     state.calibration = PixelAimCalibration.load(CALIBRATION_PATH)
     logger.info("loaded calibration: %s", state.calibration.status())
