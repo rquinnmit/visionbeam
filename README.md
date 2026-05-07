@@ -2,194 +2,264 @@
 
 ## Introduction
 
-VisionBeam is a spatially-aware autonomous party light that combines computer vision, spatial mapping, and live-event hardware. Rather than relying on pre-programmed lighting cues, the system uses person detection and multi-person tracking to identify who is dancing most and steers a moving head light to follow the action in real time.
+VisionBeam is a vision-driven autonomous moving-head light that finds the most active dancer in a room and steers a real DMX fixture to follow them in real time. There are no body-worn beacons, no pre-programmed cues, and no specialized cameras: a webcam in the browser sends frames to a Python server, the server runs a hybrid YOLOv8 + ByteTrack + masked motion-heatmap tracker, and the resulting target pixel is mapped to fixture pan/tilt and pushed out over USB-to-DMX512.
 
-This project also serves as a research study for MIT 6.S058, investigating how different computer vision approaches to motion-driven target selection perform under dynamic stage illumination. The core research question: **does combining deep learning detection with classical motion analysis (VisionBeam's hybrid approach) outperform either technique alone when lighting conditions are hostile?**
+The project also doubles as a research study for MIT 6.S058. The core question is whether combining a deep-learning person detector with classical motion analysis (the VisionBeam "hybrid" tracker) is genuinely more robust than either technique on its own when stage lighting is hostile — sweeping beams, color washes, the fixture lighting up the very floor it is trying to perceive. A self-contained evaluation harness records clips under four controlled lighting conditions, extracts ground truth from a colored marker, runs four target-selection methods on every clip, and writes accuracy / jitter / throughput metrics and figures. The findings are summarized in [`final_report/experiments_and_findings.md`](final_report/experiments_and_findings.md).
 
 ## Project Structure
 
 ```
-visionbeam/               # Live system
-├── calibration.py         # ArUco homography + light triangulation
-├── ik.py                  # Floor-to-pan/tilt spatial translation + EMA smoothing
-├── dmx.py                 # USB-to-DMX512 serial interface + fixture profiles
-├── tracker.py             # Core hybrid method (YOLOv8 + ByteTrack + masked motion heatmap)
-├── pipeline.py            # Threaded camera → tracker → IK → DMX loop
-└── ui.py                  # PySide6 Director's Station UI
+backend/                            # Python: tracker, calibration, DMX, FastAPI server, eval
+├── server.py                       # FastAPI + WebSocket: browser frames in, detections + DMX out
+├── main.py                         # Alternative local CLI runner (OpenCV preview + PySide stub)
+├── requirements.txt
+├── visionbeam/
+│   ├── tracker.py                  # HybridMethod: YOLOv8 + ByteTrack + person-masked motion heatmap
+│   ├── aim.py                      # PixelAimCalibration: quadratic pixel -> pan/tilt fit (live system)
+│   ├── dmx.py                      # USB-to-DMX512 serial driver, fixture profile, MockDMX fallback
+│   ├── calibration.py              # ArUco floor homography + light triangulation (offline eval)
+│   ├── ik.py                       # LightMount + floor->pan/tilt trig + EMA smoother (offline eval)
+│   └── pipeline.py                 # Threaded local pipeline (used by main.py)
+├── evaluation/
+│   ├── methods.py                  # Baseline targets: frame diff, Farneback flow, detection-only
+│   ├── record.py                   # Records 4-condition lighting dataset from a webcam
+│   ├── ground_truth.py             # HSV / brightness marker extraction -> per-frame CSV
+│   ├── evaluate.py                 # Runs every method on every clip, writes per-clip + summary CSVs
+│   └── visualize.py                # Matplotlib figures (accuracy, jitter, FPS, trajectory)
+├── calibration/
+│   ├── homography.example.json     # Identity placeholder for FloorCalibration
+│   ├── mount.example.json          # Placeholder LightMount (eval-only)
+│   ├── homography.json             # Real venue homography (gitignored)
+│   ├── mount.json                  # Real venue mount (gitignored)
+│   └── aim.json                    # Live pixel->pan/tilt calibration (gitignored, written by UI)
+├── config/
+│   ├── fixture_default.json        # Generic 8-channel moving head
+│   └── fixture_zq02360_15ch.json   # 15-channel ZQ02360 / UKing 120W ring spot used in development
+├── data/                           # Recorded clips, ground truth, figures (gitignored, regenerable)
+└── results/                        # Per-clip and summary CSVs from evaluate.py (gitignored)
 
-evaluation/                # Research evaluation framework
-├── methods.py             # Baseline target-selection methods (frame diff, Farneback, detection-only)
-├── record.py              # Dataset recording tool (4 lighting conditions)
-├── ground_truth.py        # Tracking-marker ground truth extraction
-├── evaluate.py            # Metrics harness (accuracy, jitter, robustness, throughput)
-└── visualize.py           # Matplotlib figure generation for the report
+frontend/                           # Vite + React + TypeScript browser client
+├── index.html
+├── package.json
+├── vite.config.ts
+└── src/
+    ├── main.tsx
+    ├── App.tsx                     # WebSocket lifecycle, mode (run / calibrate), control messages
+    ├── Viewport.tsx                # Live video + overlay (tracks, target, simulated beam)
+    ├── CalibrationPanel.tsx        # Pan/tilt sliders, sample/fit/clear controls, RMS readout
+    ├── camera.ts                   # getUserMedia + JPEG capture helpers
+    ├── types.ts                    # Shared WebSocket message contracts
+    └── styles.css
 
-config/
-└── fixture_default.json   # Generic moving head DMX channel map
+final_report/
+├── draft.md                        # Working draft of the paper
+├── draft.tex / draft.pdf           # LaTeX build
+└── experiments_and_findings.md     # Source of truth for the numbers and their interpretation
 ```
+
+## How the live system fits together
+
+The deployment loop is a thin client / fat server split:
+
+1. The browser captures webcam frames via `getUserMedia`, draws each frame into an offscreen canvas, JPEG-encodes it, and streams it over a single WebSocket (`ws://127.0.0.1:8000/ws/detect`). One frame is in flight at a time — the next is captured only when the server replies, so the system self-throttles to whatever rate the tracker can sustain.
+2. The server (`backend/server.py`) decodes the JPEG, runs `HybridMethod.process_frame` (YOLOv8n detection every Nth frame + ByteTrack + person-masked frame differencing + Gaussian-blurred peak), and returns a JSON payload: tracked bounding boxes with persistent IDs, the chosen target pixel, the locked-on ID if any, and the current calibration / DMX state.
+3. If the operator has fitted a pixel-to-aim calibration and `auto_aim` is on, the server feeds the target pixel through `PixelAimCalibration.predict` to get fixture pan and tilt, then writes them to DMX via `DMXConnection.aim`. With no DMX adapter attached, the server falls back to `MockDMX` and the UI shows a synthetic beam dot using the same pan/tilt that would have been sent to the real fixture.
+4. The React app draws the live video, overlays the bounding boxes, target crosshair, and simulated beam, and exposes two interaction modes:
+   - **Run.** Click a person to lock the tracker to that ID; click again (or click the background) to unlock. The light follows the locked track's bounding box centroid, ignoring the motion heatmap.
+   - **Calibrate.** Drive the fixture to a sequence of pan/tilt setpoints with sliders, click where the beam dot actually lands in the camera image, fit a quadratic least-squares pixel-to-pan/tilt model, and persist it to `backend/calibration/aim.json`.
+
+The control channel is the same WebSocket, used for plain-text JSON messages: `lock`, `unlock`, `auto_aim`, `aim`, `calibrate_sample`, `calibration_fit`, `calibration_clear`, `set_lamp`. See `Connection`-level handling in [`backend/server.py`](backend/server.py) and the typed shapes in [`frontend/src/types.ts`](frontend/src/types.ts).
 
 ## Getting Started
 
-### 1. Install
+### 1. Backend
 
 From the repository root:
 
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+source .venv/bin/activate     # Windows: .venv\Scripts\activate
+pip install -r backend/requirements.txt
 ```
 
-The first run that loads YOLO may download `yolov8n.pt`.
+The first run that loads YOLO will download `yolov8n.pt` automatically.
 
-### 2. Calibration files
-
-The code loads **`calibration/homography.json`** and **`calibration/mount.json`** (see defaults in `main.py` and `evaluation.evaluate`). Those paths are **gitignored** so each venue’s measured values stay on your machine.
-
-**Committed templates** (safe to share, not tied to a real room):
-
-| Template | Role |
-|----------|------|
-| [`calibration/homography.example.json`](calibration/homography.example.json) | **Shape and format** that [`FloorCalibration.save`](visionbeam/calibration.py) / `load` expect: a single key `"homography"` whose value is a **3×3** matrix. The committed matrix is the **identity**. That makes JSON valid and lets you run the app once you copy the file, but **identity does not model a real camera** — pixel coordinates would map naïvely to floor coordinates and metrics would be meaningless until you replace this with a homography computed from four or more measured pixel ↔ floor point pairs. |
-| [`calibration/mount.example.json`](calibration/mount.example.json) | **Shape and format** that [`LightMount.save`](visionbeam/ik.py) / `load` expect: fixture position **x, y, z** (meters on the floor plane, **z** = height), plus **pan_offset** and **tilt_offset** (degrees) linking world angles to DMX. The numbers are **placeholders** (e.g. fixture near origin, **z = 3 m**, defaults matching `LightMount`). Replace after **`triangulate_light(...)`** from measured aim points or manual survey. |
-
-**First-time setup:** copy templates to the filenames the programs read, then overwrite with real calibration when you have measurements.
+Run the server (development mode, with reload):
 
 ```bash
-cp calibration/homography.example.json calibration/homography.json
-cp calibration/mount.example.json calibration/mount.json
+cd backend
+VISIONBEAM_NO_DMX=1 uvicorn server:app --reload
 ```
 
-See **System Pipeline → Spatial Calibration** below for how to measure ArUco floor points and light aim points and generate the real JSON via `FloorCalibration` / `triangulate_light`.
+Environment variables:
 
-### 3. Smoke test: live pipeline (no DMX)
+| Variable | Purpose |
+|----------|---------|
+| `VISIONBEAM_NO_DMX=1` | Force `MockDMX`. No hardware required; the UI shows a synthetic beam dot. |
+| `VISIONBEAM_DMX_PORT=/dev/tty.usbserial-XXXX` | Override DMX serial port. Otherwise the server scans `/dev/tty.usbserial-*`, `/dev/tty.usbmodem*`, `/dev/ttyUSB*`, `/dev/ttyACM*` and uses the first match, falling back to `MockDMX`. |
+| `VISIONBEAM_FIXTURE=path/to/profile.json` | Override fixture profile. Default: `backend/config/fixture_zq02360_15ch.json`. |
 
-Runs camera \(\rightarrow\) hybrid tracker \(\rightarrow\) IK. No USB-DMX adapter required.
+A quick health probe is exposed at `GET http://127.0.0.1:8000/health` and reports calibration status.
+
+### 2. Frontend
 
 ```bash
+cd frontend
+npm install
+npm run dev
+```
+
+By default the client connects to `ws://127.0.0.1:8000/ws/detect`. Override with `VITE_WS_URL` if you run the server on a different host or port:
+
+```bash
+VITE_WS_URL=ws://192.168.1.50:8000/ws/detect npm run dev
+```
+
+Open the printed Vite URL in a browser, grant camera access, pick a camera from the dropdown, and the live tracking overlay should appear within a second of the WebSocket reaching `open`.
+
+### 3. Pixel-to-aim calibration (live system)
+
+The live tracking-to-DMX path uses a quadratic pixel-to-pan/tilt mapping fit from operator clicks; see `PixelAimCalibration` in [`backend/visionbeam/aim.py`](backend/visionbeam/aim.py). To set it up:
+
+1. With the camera and fixture both visible, switch the UI to **Calibrate**. Auto-aim is automatically disabled while calibrating so the live aim doesn't fight the manual sliders.
+2. Move the **Pan** and **Tilt** sliders. The fixture follows in real time (white light at full dimmer for visibility).
+3. Click in the camera image where the beam dot is actually landing. The server records `(pan, tilt, px, py)` as a sample.
+4. If the dot is off-screen at the current pan/tilt, click **Off-screen** to record an off-screen sample (kept for completeness, excluded from the fit).
+5. Repeat for ≥6 in-frame samples spread across the camera view, then click **Fit**. The server solves the quadratic least-squares system separately for pan and for tilt and reports per-axis RMS error in degrees. The fitted coefficients are persisted to `backend/calibration/aim.json` (gitignored — venue-specific).
+6. Switch back to **Run**. The live tracker now drives the real fixture (or `MockDMX` if no adapter is present).
+
+`Clear` discards both samples and fitted coefficients and removes `aim.json`.
+
+### 4. Calibration files (committed templates vs. real values)
+
+The repo ships **example** templates and gitignores the real venue-specific calibration so each install can keep its own measured values without polluting commits:
+
+| Path | Used by | Role |
+|------|---------|------|
+| [`backend/calibration/homography.example.json`](backend/calibration/homography.example.json) | `FloorCalibration` (offline eval) | Identity 3×3 homography. Lets the evaluation harness load and parse a valid file even if no real homography has been measured yet. With the identity matrix, "floor coordinates" are numerically equal to pixels — see §6.2 of [`final_report/experiments_and_findings.md`](final_report/experiments_and_findings.md) for what that means for the reported numbers. |
+| [`backend/calibration/mount.example.json`](backend/calibration/mount.example.json) | `LightMount` (offline eval) | Placeholder mount geometry: x, y, z in meters with default pan/tilt offsets matching `LightMount`. Replace with values from `triangulate_light(...)` if you ever need a real floor-coordinate IK path. |
+| `backend/calibration/homography.json`, `mount.json` | offline eval | **Gitignored.** Real venue calibration. Copy from `*.example.json` to start. |
+| `backend/calibration/aim.json` | **live system** (`server.py`) | **Gitignored.** Written by the calibration UI as described above; this is what actually drives DMX during deployment. |
+
+First-time setup for the offline evaluation:
+
+```bash
+cp backend/calibration/homography.example.json backend/calibration/homography.json
+cp backend/calibration/mount.example.json backend/calibration/mount.json
+```
+
+The live system does not need either file — only `aim.json`, which is generated through the UI.
+
+### 5. Optional: local CLI runner without a browser
+
+A standalone OpenCV preview that wires `Pipeline` directly to a webcam and (optionally) DMX still exists at [`backend/main.py`](backend/main.py). It uses the older floor-homography + IK code path rather than the live `PixelAimCalibration`:
+
+```bash
+cd backend
 python main.py --no-dmx --camera 0
 ```
 
-Press **`q`** to quit, **`a`** to toggle AUTO vs MANUAL (manual click-to-aim is planned for the PySide UI; OpenCV preview only shows tracking).
-
-Use **`--camera 1`** (etc.) if the default device is wrong. On macOS, DMX serial ports are often `/dev/tty.usbserial-*` rather than Linux’s `/dev/ttyUSB0`; pass **`--dmx-port`** when using hardware.
-
-### 4. Research evaluation (offline)
-
-Record clips, extract marker-based ground truth, run metrics, then plot figures.
-
-```bash
-mkdir -p data/clips data/gt data/figures results
-
-# Record one clip per lighting condition (interactive prompts between takes)
-python -m evaluation.record --camera 0 --output data/clips --duration 30
-
-# Ground truth: match video basename → data/gt/<basename>_gt.csv
-python -m evaluation.ground_truth \
-  --video data/clips/<your_clip>.mp4 \
-  --mode color \
-  --output data/gt \
-  --preview
-```
-
-Tune **`--hsv-low`** and **`--hsv-high`** (comma-separated `H,S,V`) so the colored marker tracks reliably, then re-run without **`--preview`** for the final CSV.
-
-```bash
-python -m evaluation.evaluate \
-  --clips data/clips \
-  --gt data/gt \
-  --calibration calibration/homography.json \
-  --output results
-
-python -m evaluation.visualize --results results --output data/figures
-```
-
-Optional: **`--trajectory-clip <stem>`** on `visualize` (filename without `.mp4`) for a specific trajectory plot.
-
-**Naming:** For each `data/clips/foo.mp4`, ground truth must be `data/gt/foo_gt.csv`. `evaluate` skips clips with no matching GT file.
-
-### 5. Documentation links
-
-* [`RESEARCH_PLAN.md`](RESEARCH_PLAN.md) — lighting conditions, metrics, figures  
-* [`REFERENCES.md`](REFERENCES.md) — papers and benchmarks  
-
-## System Pipeline
-
-### 1. Spatial Calibration (one-time, pre-event)
-Two-step calibration performed once at the venue before an event:
-* **Camera-to-floor homography:** Four ArUco markers are placed at known positions on the floor. OpenCV detects them automatically and computes a homography matrix (`cv2.findHomography`) mapping camera pixels to top-down floor coordinates.
-* **Light position triangulation:** The light is aimed at 3+ known floor points and the pan/tilt angles are recorded at each. A nonlinear least-squares solver (`scipy.optimize.least_squares`) triangulates the light's 3D mount position (x, y, z) in the same floor coordinate system.
-
-### 2. Person Detection
-YOLOv8-nano produces bounding boxes for every person in the scene. Non-human motion (doors, curtains, fog machines, reflections) is discarded at this stage, so downstream tracking operates exclusively on people. Detection can run every Nth frame (e.g., every 2nd or 3rd) to maintain throughput, with the tracker's Kalman predictions filling the gaps.
-
-### 3. Multi-Person Tracking
-ByteTrack associates detections across frames using a Kalman filter and IoU-based matching, assigning each person a persistent ID. This enables identity-aware behaviors: the system can follow a specific dancer, smoothly hand off between individuals, and ignore people who have been stationary.
-
-### 4. Motion Heatmap & Target Selection
-Frame differencing (`cv2.absdiff`) on downscaled grayscale frames (~320x240) produces a per-pixel motion signal. This signal is masked to only include regions covered by tracked person bounding boxes, then Gaussian-blurred to form a spatial heatmap. The peak of the heatmap identifies the most active dancer on the floor.
-
-**Beam masking:** A mask is applied around the light's current aim point before computing motion, preventing the system from chasing its own beam.
-
-**Temporal smoothing:** An exponential moving average on the target coordinates prevents frame-to-frame jitter and produces smooth light sweeps.
-
-### 5. Spatial Translation (Floor → Pan/Tilt)
-Given the light's known mount position from calibration, converting a floor target to pan/tilt angles is direct trigonometry (`atan2`). The homography first maps the heatmap peak from camera pixels to floor coordinates, then the IK step computes the required pan and tilt to aim from the light's mount point to that floor position.
-
-### 6. DMX Hardware Actuation
-Pan/tilt angles are scaled to DMX channel values (0–255 coarse, 0–255 fine for 16-bit resolution) and transmitted over USB-to-DMX512 serial at ~40 FPS. A fixture profile config maps logical channels (pan, tilt, dimmer, color, etc.) to DMX addresses, supporting different moving head models.
-
-### 7. Director's Station UI
-A real-time operator interface built initially with OpenCV's `imshow` for prototyping, with a planned migration to PySide6 for production use.
-
-**Live monitoring view:**
-* Warped top-down floor plan with motion heatmap overlay
-* Current light aim and smoothed target indicators
-* Camera and DMX connection status
-
-**Manual override:** Click-to-aim on the floor plan, with configurable behavior (permanent override until auto is re-enabled, or timed return to autonomous mode).
-
-**Calibration wizard:** Guided step-by-step UI for the ArUco homography and light triangulation setup.
-
-**Architecture:** The pipeline (camera → CV → IK → DMX) runs on a dedicated thread, pushing display frames and metadata via `queue.Queue` to the UI thread. Manual overrides and parameter changes flow back through shared state.
+Press `q` to quit, `a` to toggle AUTO/MANUAL. This path is kept primarily for development / debugging the tracker without the browser stack; the production deployment is the `server.py` + React frontend combination above.
 
 ## Research Evaluation
 
-### Methods Compared
+The evaluation pipeline lives entirely in `backend/evaluation/` and runs offline against pre-recorded clips. All four target-selection methods (the three baselines plus the hybrid) implement the same `TargetMethod` interface — given a frame, return a target pixel — so they can be compared apples-to-apples on the same recordings.
 
-| Method | Detection | Motion Signal | Location |
-|---|---|---|---|
-| Frame Differencing | None | Classical (full-frame `absdiff`) | `evaluation/methods.py` |
-| Farneback Dense Flow | None | Classical (dense optical flow) | `evaluation/methods.py` |
-| Detection Only | DL (YOLOv8n + ByteTrack) | None | `evaluation/methods.py` |
-| **Hybrid (VisionBeam)** | **DL (YOLOv8n + ByteTrack)** | **Classical (bbox-masked `absdiff`)** | `visionbeam/tracker.py` |
+### Methods compared
 
-### Evaluation Protocol
+| Method | Detection | Motion signal | Implementation |
+|--------|-----------|---------------|----------------|
+| Frame Differencing | None | Classical (full-frame `cv2.absdiff`) | `evaluation/methods.py` |
+| Farneback Dense Flow | None | Classical (`cv2.calcOpticalFlowFarneback` magnitude) | `evaluation/methods.py` |
+| Detection Only | YOLOv8n + ByteTrack | None | `evaluation/methods.py` |
+| **Hybrid (VisionBeam)** | YOLOv8n + ByteTrack | Classical, masked to person bounding boxes | `visionbeam/tracker.py` |
 
-Video clips are recorded in a controlled studio under 4 lighting conditions: ambient, external light (static), external light (dynamic), and fixture + external (dynamic). A bright tracking marker worn by the subject provides per-frame ground truth via offline color thresholding. Each method is run on every clip; predictions are transformed to floor coordinates via the calibrated homography and compared to ground truth.
+The hybrid is evaluated with `snap_to_feet=False` so the harness measures the raw heatmap peak directly; deployment uses `snap_to_feet=True` to project the peak to the dancer's feet.
+
+### Workflow
+
+```bash
+cd backend
+mkdir -p data/clips data/gt data/figures results
+
+# 1. Record clips. Interactive prompts pause between conditions so you can change the lights.
+python -m evaluation.record --camera 0 --output data/clips --duration 30
+
+# 2. Extract per-frame ground truth from a tracking marker (e.g. green LED).
+python -m evaluation.ground_truth \
+    --video data/clips/<your_clip>.mp4 \
+    --mode color \
+    --output data/gt \
+    --preview
+
+# Tune --hsv-low and --hsv-high until the marker tracks reliably under preview, then
+# re-run without --preview to write the final CSV. For each data/clips/foo.mp4,
+# ground_truth.py writes data/gt/foo_gt.csv. The evaluation will skip clips with no
+# matching GT file.
+
+# 3. Run all methods on all clips and write per-frame + summary CSVs.
+python -m evaluation.evaluate \
+    --clips data/clips \
+    --gt data/gt \
+    --calibration calibration/homography.json \
+    --output results
+
+# 4. Render figures.
+python -m evaluation.visualize --results results --output data/figures
+```
+
+Pass `--trajectory-clip <stem>` (filename minus `.mp4`) to `visualize` to plot a specific clip's trajectory; otherwise the first clip in the summary is used.
+
+### Lighting conditions
+
+| Condition | Description |
+|-----------|-------------|
+| `ambient` | Overhead room lights only. No fixture, no accent. |
+| `external_static` | A wall-washer at fixed color/intensity in addition to ambient. |
+| `external_dynamic` | Wall-washer animated through color and intensity changes during the clip. |
+| `fixture_external_dynamic` | The VisionBeam fixture itself active and aiming at the dancer, plus the dynamic accent light. |
 
 ### Metrics
 
-* **Targeting accuracy** — mean Euclidean error on the floor plane (meters)
-* **Target stability (jitter)** — total predicted-target path length per second
-* **Robustness** — accuracy degradation from ambient to fixture + external (dynamic) conditions
-* **Throughput** — FPS on evaluation hardware
+Computed per clip and aggregated over the dataset by `evaluate.py`:
 
-See [`RESEARCH_PLAN.md`](RESEARCH_PLAN.md) for the full evaluation framework and [`REFERENCES.md`](REFERENCES.md) for related work.
+* **Targeting accuracy** — mean Euclidean distance between predicted and ground-truth marker positions, projected through the homography.
+* **Target stability (jitter)** — total path length of the predicted aim, normalized by clip duration.
+* **Robustness** — degradation slope from `ambient` to `fixture_external_dynamic`.
+* **Throughput** — wall-clock FPS of `process_frame` on the evaluation hardware.
+
+### Findings (summary)
+
+Across 20 clips (4 conditions × 5 reps), the dataset shows:
+
+* **Detection-only** has the lowest absolute targeting error in every condition, but its apparent stability is partially a failure-mode artifact: under fixture lighting its jitter drops because YOLO confidence sags and frames return `None` rather than because predictions are genuinely steadier.
+* **Hybrid** is consistently ~100 px behind detection in absolute pixel error — a geometric offset, not a lighting artifact (the hybrid signal lands on the silhouette while the GT marker is hand-held; see §6.1 of `experiments_and_findings.md`). Critically, this gap is roughly *constant* across conditions.
+* **Hybrid degrades the least under adversity.** From ambient to fixture-active lighting, hybrid's accuracy worsens by 48% and its jitter by 14% — the smallest relative degradation of any method. Frame differencing and Farneback flow more than double in jitter. Detection's accuracy slope is +55%.
+* **Hybrid sustains real-time throughput** (~67 FPS, ~1.8× detection-only) thanks to running YOLO every other frame and reusing ByteTrack predictions in between.
+
+Full numbers, caveats, per-clip breakdowns, and outlier discussion are in [`final_report/experiments_and_findings.md`](final_report/experiments_and_findings.md). The accompanying paper draft is at [`final_report/draft.pdf`](final_report/draft.pdf).
 
 ## Hardware Requirements
-1. **DMX Lighting Fixture:** 1x moving head light with DMX512 pan/tilt control (16-bit recommended)
-2. **Communication Interface:** 1x USB-to-DMX512 adapter (e.g., Enttec Open DMX)
-3. **Camera:** 1x standard USB webcam (720p sufficient)
-4. **Calibration Markers:** 4x printed ArUco markers (generated via OpenCV)
-5. **Computer:** Any modern laptop (a discrete or integrated GPU is recommended for real-time YOLO inference but not strictly required — CPU inference at ~25-30 FPS is sufficient)
+
+1. **DMX moving head** with 16-bit pan/tilt control. Development used a 15-channel ZQ02360 / UKing 120W ring spot (`backend/config/fixture_zq02360_15ch.json`); a generic 8-channel profile is also provided.
+2. **USB-to-DMX512 adapter** (Enttec Open DMX or compatible). Optional — the server runs without one and shows a synthetic beam in the UI.
+3. **Webcam** running at the browser. 720p is sufficient; the tracker downscales internally to 320 px wide for the motion stage.
+4. **Computer** with Python 3.10+ and Node.js 18+. CPU-only YOLOv8n inference clears 30 FPS comfortably on a modern laptop.
 
 ## Software Dependencies
-* `python 3.10+`
-* `opencv-contrib-python` — camera capture, ArUco detection, homography, optical flow, frame differencing
-* `ultralytics` — YOLOv8-nano person detection and ByteTrack multi-object tracking
-* `torch` — PyTorch runtime required by ultralytics (CPU or CUDA)
-* `scipy` — light position triangulation via least-squares optimization
-* `pyserial` — USB-to-DMX512 serial communication
-* `PySide6` — Director's Station UI
-* `matplotlib` — evaluation figure generation
+
+**Backend (Python 3.10+):**
+
+* `fastapi` + `uvicorn[standard]` — WebSocket server.
+* `opencv-contrib-python` — camera capture, ArUco detection, frame differencing, Farneback flow, homography.
+* `ultralytics` — YOLOv8-nano detection and ByteTrack multi-object tracking.
+* `torch` — runtime for `ultralytics` (CPU or CUDA).
+* `numpy`, `scipy` — math, least-squares fitting (pixel-to-aim calibration and offline light triangulation).
+* `pyserial` — USB-to-DMX512 serial.
+* `matplotlib` — evaluation figures.
+* `PySide6` — declared in `requirements.txt` for legacy reasons (`visionbeam/ui.py` was the original Director's Station UI; the active deployment surface is now the React frontend).
+
+**Frontend (Node 18+):**
+
+* `react`, `react-dom` (React 19).
+* `vite`, `@vitejs/plugin-react`, `typescript`.
