@@ -16,6 +16,7 @@ from visionbeam.calibration import FloorCalibration
 from visionbeam.dmx import DMXConnection
 from visionbeam.ik import LightMount, TargetSmoother, floor_to_pan_tilt
 from visionbeam.tracker import HybridMethod
+from visionbeam.viz import save_step
 
 
 class PipelineState:
@@ -77,6 +78,8 @@ class Pipeline:
             ret, frame = self._cap.read()
             if not ret:
                 continue
+
+            save_step(frame, "01_capture")
 
             target_px = None
             floor_target = None

@@ -1,5 +1,5 @@
 {
-    "name": "ZQ02360 / UKing 120W ring spot (15 CH — verify against your manual)",
+    "name": "ZQ02360 / UKing 120W ring spot (15 CH, start 1)",
     "dmx_start_address": 1,
     "channels": {
         "pan_coarse":   1,
@@ -7,13 +7,15 @@
         "tilt_coarse":  3,
         "tilt_fine":    4,
         "dimmer":       8,
-        "color":        10,
-        "gobo":         11,
-        "strobe":       9
+        "strobe":       9,
+        "red":          10,
+        "green":        11,
+        "blue":         12,
+        "white":        13
     },
     "pan_range_deg":  540,
     "tilt_range_deg": 270,
     "pan_invert":  false,
     "tilt_invert": false,
-    "_notes": "Assumption: 15CH = 13CH table with TWO channels inserted at relative 5–6 (e.g. pan/tilt speed), shifting old CH5–13 to CH7–15. Then: CH7=speed, CH8=dimmer, CH9=strobe, CH10–13=RGBW, CH14–15=show/reset or ring (not driven here). If your manual instead keeps CH1–13 identical and only adds CH14–15, use config/fixture_zq02360_13ch.json with the fixture in 15CH only if the manual confirms no shift — otherwise edit pan/tilt/dimmer indices to match your table. If beam is dark, extend main.py set_defaults for RGBW per manual."
+    "_notes": "Indices checked on hardware (USB-DMX). CH7 often pan/tilt speed on this personality; CH14–15 ring/show — extend channels if you need them in software."
 }

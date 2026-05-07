@@ -183,9 +183,9 @@ def find_clip_pairs(clips_dir: str, gt_dir: str) -> list[dict]:
     """
     Match video clips with their ground truth CSVs.
 
-    Expects clip files named like 'ambient_20260429_120000.mp4' with
-    sidecar JSON 'ambient_20260429_120000.json' and GT files named
-    'ambient_20260429_120000_gt.csv'.
+    Expects clip files named like 'external_static_20260429_120000.mp4'
+    with sidecar JSON 'external_static_20260429_120000.json' and GT files
+    named 'external_static_20260429_120000_gt.csv'.
     """
     pairs = []
     for fname in sorted(os.listdir(clips_dir)):

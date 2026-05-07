@@ -19,7 +19,7 @@ visionbeam/               # Live system
 
 evaluation/                # Research evaluation framework
 ├── methods.py             # Baseline target-selection methods (frame diff, Farneback, detection-only)
-├── record.py              # Dataset recording tool (5 lighting conditions)
+├── record.py              # Dataset recording tool (4 lighting conditions)
 ├── ground_truth.py        # Tracking-marker ground truth extraction
 ├── evaluate.py            # Metrics harness (accuracy, jitter, robustness, throughput)
 └── visualize.py           # Matplotlib figure generation for the report
@@ -166,13 +166,13 @@ A real-time operator interface built initially with OpenCV's `imshow` for protot
 
 ### Evaluation Protocol
 
-Video clips are recorded in a controlled studio under 5 lighting conditions (ambient, static color, slow drift, strobe, moving beam). A bright tracking marker worn by the subject provides per-frame ground truth via offline color thresholding. Each method is run on every clip; predictions are transformed to floor coordinates via the calibrated homography and compared to ground truth.
+Video clips are recorded in a controlled studio under 4 lighting conditions: ambient, external light (static), external light (dynamic), and fixture + external (dynamic). A bright tracking marker worn by the subject provides per-frame ground truth via offline color thresholding. Each method is run on every clip; predictions are transformed to floor coordinates via the calibrated homography and compared to ground truth.
 
 ### Metrics
 
 * **Targeting accuracy** — mean Euclidean error on the floor plane (meters)
 * **Target stability (jitter)** — total predicted-target path length per second
-* **Robustness** — accuracy degradation from ambient to strobe conditions
+* **Robustness** — accuracy degradation from ambient to fixture + external (dynamic) conditions
 * **Throughput** — FPS on evaluation hardware
 
 See [`RESEARCH_PLAN.md`](RESEARCH_PLAN.md) for the full evaluation framework and [`REFERENCES.md`](REFERENCES.md) for related work.
