@@ -27,8 +27,19 @@ backend/calibration/mount.json
 backend/calibration/aim.json
 
 # Frontend
+node_modules/
 frontend/node_modules/
 frontend/dist/
+*.tsbuildinfo
+.vite/
+.parcel-cache/
+
+# Coverage / test artifacts
+coverage/
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Logs
 *.log
