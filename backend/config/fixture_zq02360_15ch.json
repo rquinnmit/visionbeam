@@ -6,12 +6,11 @@
         "pan_fine":     2,
         "tilt_coarse":  3,
         "tilt_fine":    4,
+        "white":        6,
         "dimmer":       8,
         "strobe":       9,
-        "red":          10,
-        "green":        11,
-        "blue":         12,
-        "white":        13
+        "multicolor":   12,
+        "party_mode":   14
     },
     "pan_range_deg":  540,
     "tilt_range_deg": 270,
