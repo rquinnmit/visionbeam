@@ -136,11 +136,7 @@ export default function App() {
 
   useEffect(() => {
     if (wsState !== "open") return;
-    if (mode === "calibrate") {
-      sendControl({ type: "set_lamp", dimmer: 255, r: 0, g: 255, b: 0, w: 0 });
-    } else {
-      sendControl({ type: "set_lamp", dimmer: 255, r: 0, g: 0, b: 0, w: 255 });
-    }
+    sendControl({ type: "set_lamp", dimmer: 255, r: 0, g: 0, b: 0, w: 255 });
   }, [wsState, mode, sendControl]);
 
   const setLockOptimistic = useCallback((id: number | null) => {
@@ -180,11 +176,9 @@ export default function App() {
       // Disable auto-aim while calibrating so the live aim doesn't fight
       // the manual sliders.
       sendControl({ type: "auto_aim", enabled: next === "run" });
+      sendControl({ type: "set_lamp", dimmer: 255, r: 0, g: 0, b: 0, w: 255 });
       if (next === "calibrate") {
-        sendControl({ type: "set_lamp", dimmer: 255, r: 0, g: 255, b: 0, w: 0 });
         sendControl({ type: "aim", pan: calPan, tilt: calTilt });
-      } else {
-        sendControl({ type: "set_lamp", dimmer: 255, r: 0, g: 0, b: 0, w: 255 });
       }
     },
     [calPan, calTilt, sendControl],
