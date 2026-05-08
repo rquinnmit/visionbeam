@@ -21,9 +21,7 @@ build/
 .DS_Store
 Thumbs.db
 
-# Venue-specific calibration (copy from *.example.json in repo)
-backend/calibration/homography.json
-backend/calibration/mount.json
+# Venue-specific pixel-to-pan/tilt calibration (written by the calibration UI)
 backend/calibration/aim.json
 
 # Frontend

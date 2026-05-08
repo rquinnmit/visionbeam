@@ -1,8 +1,7 @@
 numpy
-opencv-contrib-python
+opencv-python
 ultralytics
 torch
-scipy
 pyserial
 matplotlib
 fastapi

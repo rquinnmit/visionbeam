@@ -15,9 +15,9 @@ in pixel space representing "where the light should aim." Methods:
                           heatmap; peak of the person-masked heatmap. This is
                           the current VisionBeam design.
 
-All methods return results in pixel coordinates; the evaluation harness
-applies the homography transform to floor coordinates before computing
-metrics against ground truth.
+All methods return results in pixel coordinates. The evaluation harness
+compares them directly in pixel space against the ground-truth marker
+position; no floor projection is involved.
 """
 
 import cv2

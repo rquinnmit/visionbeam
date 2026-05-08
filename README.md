@@ -16,9 +16,7 @@ backend/                            # Python: tracker, calibration, DMX, FastAPI
 │   ├── base.py                     # TargetMethod ABC shared by the production tracker and baselines
 │   ├── tracker.py                  # HybridMethod: YOLOv8 + ByteTrack + person-masked motion heatmap
 │   ├── aim.py                      # PixelAimCalibration: quadratic pixel -> pan/tilt fit (live system)
-│   ├── dmx.py                      # USB-to-DMX512 serial driver, fixture profile, MockDMX fallback
-│   ├── calibration.py              # ArUco floor homography + light triangulation (offline eval)
-│   └── ik.py                       # LightMount + floor->pan/tilt trig + EMA smoother (offline eval)
+│   └── dmx.py                      # USB-to-DMX512 serial driver, fixture profile, MockDMX fallback
 ├── evaluation/
 │   ├── methods.py                  # Baseline targets: frame diff, Farneback flow, detection-only
 │   ├── record.py                   # Records 4-condition lighting dataset from a webcam
@@ -26,11 +24,7 @@ backend/                            # Python: tracker, calibration, DMX, FastAPI
 │   ├── evaluate.py                 # Runs every method on every clip, writes per-clip + summary CSVs
 │   └── visualize.py                # Matplotlib figures (accuracy, jitter, FPS, trajectory)
 ├── calibration/
-│   ├── homography.example.json     # Identity placeholder for FloorCalibration
-│   ├── mount.example.json          # Placeholder LightMount (eval-only)
-│   ├── homography.json             # Real venue homography (gitignored)
-│   ├── mount.json                  # Real venue mount (gitignored)
-│   └── aim.json                    # Live pixel->pan/tilt calibration (gitignored, written by UI)
+│   └── aim.json                    # Pixel->pan/tilt calibration (gitignored, written by UI)
 ├── config/
 │   ├── fixture_default.json        # Generic 8-channel moving head
 │   └── fixture_zq02360_15ch.json   # 15-channel ZQ02360 / UKing 120W ring spot used in development
@@ -129,25 +123,15 @@ The live tracking-to-DMX path uses a quadratic pixel-to-pan/tilt mapping fit fro
 
 `Clear` discards both samples and fitted coefficients and removes `aim.json`.
 
-### 4. Calibration files (committed templates vs. real values)
+### 4. Calibration files
 
-The repo ships **example** templates and gitignores the real venue-specific calibration so each install can keep its own measured values without polluting commits:
+The deployed pipeline uses exactly one calibration file. It is venue-specific, written by the in-browser calibration UI, and gitignored so each install keeps its own measured values:
 
 | Path | Used by | Role |
 |------|---------|------|
-| [`backend/calibration/homography.example.json`](backend/calibration/homography.example.json) | `FloorCalibration` (offline eval) | Identity 3×3 homography. Lets the evaluation harness load and parse a valid file even if no real homography has been measured yet. With the identity matrix, "floor coordinates" are numerically equal to pixels — see §6.2 of [`final_report/experiments_and_findings.md`](final_report/experiments_and_findings.md) for what that means for the reported numbers. |
-| [`backend/calibration/mount.example.json`](backend/calibration/mount.example.json) | `LightMount` (offline eval) | Placeholder mount geometry: x, y, z in meters with default pan/tilt offsets matching `LightMount`. Replace with values from `triangulate_light(...)` if you ever need a real floor-coordinate IK path. |
-| `backend/calibration/homography.json`, `mount.json` | offline eval | **Gitignored.** Real venue calibration. Copy from `*.example.json` to start. |
-| `backend/calibration/aim.json` | **live system** (`server.py`) | **Gitignored.** Written by the calibration UI as described above; this is what actually drives DMX during deployment. |
+| `backend/calibration/aim.json` | **live system** (`server.py`) | **Gitignored.** Quadratic pixel-to-pan/tilt fit produced by the calibration UI. This is the only spatial transform on the live path: target pixel → quadratic → DMX pan/tilt. |
 
-First-time setup for the offline evaluation:
-
-```bash
-cp backend/calibration/homography.example.json backend/calibration/homography.json
-cp backend/calibration/mount.example.json backend/calibration/mount.json
-```
-
-The live system does not need either file — only `aim.json`, which is generated through the UI.
+The offline evaluation harness does not require any calibration file. It compares each method's predicted pixel coordinate to the ground-truth marker pixel directly, in image space.
 
 ## Research Evaluation
 
@@ -189,7 +173,6 @@ python -m evaluation.ground_truth \
 python -m evaluation.evaluate \
     --clips data/clips \
     --gt data/gt \
-    --calibration calibration/homography.json \
     --output results
 
 # 4. Render figures.
@@ -211,19 +194,19 @@ Pass `--trajectory-clip <stem>` (filename minus `.mp4`) to `visualize` to plot a
 
 Computed per clip and aggregated over the dataset by `evaluate.py`:
 
-* **Targeting accuracy** — mean Euclidean distance between predicted and ground-truth marker positions, projected through the homography.
-* **Target stability (jitter)** — total path length of the predicted aim, normalized by clip duration.
+* **Targeting accuracy** — mean Euclidean distance, in pixels, between the predicted target and the ground-truth marker.
+* **Target stability (jitter)** — total path length of the predicted aim in pixels, normalized by clip duration.
 * **Robustness** — degradation slope from `ambient` to `fixture_external_dynamic`.
-* **Throughput** — wall-clock FPS of `process_frame` on the evaluation hardware.
+* **Processing speed** — wall-clock FPS of `process_frame` on the evaluation hardware.
 
 ### Findings (summary)
 
 Across 20 clips (4 conditions × 5 reps), the dataset shows:
 
 * **Detection-only** has the lowest absolute targeting error in every condition, but its apparent stability is partially a failure-mode artifact: under fixture lighting its jitter drops because YOLO confidence sags and frames return `None` rather than because predictions are genuinely steadier.
-* **Hybrid** is consistently ~100 px behind detection in absolute pixel error — a geometric offset, not a lighting artifact (the hybrid signal lands on the silhouette while the GT marker is hand-held; see §6.1 of `experiments_and_findings.md`). Critically, this gap is roughly *constant* across conditions.
+* **Hybrid** is consistently ~100 px behind detection in absolute pixel error — a geometric offset, not a lighting artifact. The dancer wears the green LED marker on their chest, which sits close to the geometric center of a vertical full-body bounding box, so detection's centroid lands near the marker by construction; hybrid's heatmap peak instead lands on whichever body part is moving fastest (often a swinging limb), pulling its prediction off the chest by a body-width-scale offset. See §6.1 of `experiments_and_findings.md`. Critically, this gap is roughly *constant* across conditions.
 * **Hybrid degrades the least under adversity.** From ambient to fixture-active lighting, hybrid's accuracy worsens by 48% and its jitter by 14% — the smallest relative degradation of any method. Frame differencing and Farneback flow more than double in jitter. Detection's accuracy slope is +55%.
-* **Hybrid sustains real-time throughput** (~67 FPS, ~1.8× detection-only) thanks to running YOLO every other frame and reusing ByteTrack predictions in between.
+* **Hybrid sustains real-time processing speed** (~67 FPS, ~1.8× detection-only) thanks to running YOLO every other frame and reusing ByteTrack predictions in between.
 
 Full numbers, caveats, per-clip breakdowns, and outlier discussion are in [`final_report/experiments_and_findings.md`](final_report/experiments_and_findings.md). The accompanying paper draft is at [`final_report/draft.pdf`](final_report/draft.pdf).
 
@@ -239,10 +222,10 @@ Full numbers, caveats, per-clip breakdowns, and outlier discussion are in [`fina
 **Backend (Python 3.10+):**
 
 * `fastapi` + `uvicorn[standard]` — WebSocket server.
-* `opencv-contrib-python` — camera capture, ArUco detection, frame differencing, Farneback flow, homography.
+* `opencv-python` — camera capture, frame differencing, Farneback dense flow.
 * `ultralytics` — YOLOv8-nano detection and ByteTrack multi-object tracking.
 * `torch` — runtime for `ultralytics` (CPU or CUDA).
-* `numpy`, `scipy` — math, least-squares fitting (pixel-to-aim calibration and offline light triangulation).
+* `numpy` — math and the pixel-to-pan/tilt least-squares fit.
 * `pyserial` — USB-to-DMX512 serial.
 * `matplotlib` — evaluation figures.
 

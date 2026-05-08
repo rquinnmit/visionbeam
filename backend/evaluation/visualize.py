@@ -5,8 +5,8 @@ Reads the summary and per-clip CSVs produced by evaluate.py and generates
 publication-ready matplotlib figures:
 
 1. Accuracy vs. Illumination (grouped bar / line chart)
-   — X: lighting condition, Y: mean targeting error, series: method.
-2. Trajectory Smoothing (2D floor-plan path plot)
+   — X: lighting condition, Y: mean targeting error (px), series: method.
+2. Trajectory Smoothing (2D pixel-space path plot)
    — Overlays GT path with each method's predicted path for a selected
      5-second window, showing relative jitter.
 3. Qualitative Failure Modes (image grid)
@@ -54,9 +54,9 @@ def load_summary(summary_path: str) -> list[dict]:
     with open(summary_path, newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            row["mean_error_m"] = (float(row["mean_error_m"])
-                                   if row["mean_error_m"] else None)
-            row["jitter_m_per_sec"] = float(row["jitter_m_per_sec"])
+            row["mean_error_px"] = (float(row["mean_error_px"])
+                                    if row["mean_error_px"] else None)
+            row["jitter_px_per_sec"] = float(row["jitter_px_per_sec"])
             row["fps"] = float(row["fps"])
             rows.append(row)
     return rows
@@ -99,16 +99,16 @@ def plot_accuracy_vs_illumination(summary: list[dict], output_dir: str):
     for i, method in enumerate(methods):
         values = []
         for cond in conditions:
-            matches = [r["mean_error_m"] for r in summary
+            matches = [r["mean_error_px"] for r in summary
                        if r["method"] == method and r["condition"] == cond
-                       and r["mean_error_m"] is not None]
+                       and r["mean_error_px"] is not None]
             values.append(float(np.mean(matches)) if matches else 0.0)
 
         offset = (i - n_methods / 2 + 0.5) * bar_width
         ax.bar(x + offset, values, bar_width, label=METHOD_LABELS[method])
 
     ax.set_xlabel("Lighting Condition")
-    ax.set_ylabel("Mean Targeting Error (m)")
+    ax.set_ylabel("Mean Targeting Error (pixels)")
     ax.set_title("Targeting Accuracy vs. Illumination Condition")
     ax.set_xticks(x)
     ax.set_xticklabels([CONDITION_LABELS.get(c, c) for c in conditions])
@@ -141,7 +141,7 @@ def plot_jitter_comparison(summary: list[dict], output_dir: str):
     for i, method in enumerate(methods):
         values = []
         for cond in conditions:
-            matches = [r["jitter_m_per_sec"] for r in summary
+            matches = [r["jitter_px_per_sec"] for r in summary
                        if r["method"] == method and r["condition"] == cond]
             values.append(float(np.mean(matches)) if matches else 0.0)
 
@@ -149,7 +149,7 @@ def plot_jitter_comparison(summary: list[dict], output_dir: str):
         ax.bar(x + offset, values, bar_width, label=METHOD_LABELS[method])
 
     ax.set_xlabel("Lighting Condition")
-    ax.set_ylabel("Jitter (m/s)")
+    ax.set_ylabel("Jitter (pixels/sec)")
     ax.set_title("Target Stability (Jitter) vs. Illumination Condition")
     ax.set_xticks(x)
     ax.set_xticklabels([CONDITION_LABELS.get(c, c) for c in conditions])
@@ -166,7 +166,7 @@ def plot_jitter_comparison(summary: list[dict], output_dir: str):
 def plot_trajectory(results_dir: str, output_dir: str, clip_name: str,
                     start_frame: int = 0, num_frames: int = 150):
     """
-    Figure 2: 2D trajectory plot on the floor plane.
+    Figure 2: 2D trajectory plot in pixel space.
 
     Overlays GT path with each method's predicted path over a time window.
     """
@@ -183,27 +183,28 @@ def plot_trajectory(results_dir: str, output_dir: str, clip_name: str,
         rows = load_per_clip_csv(csv_path)
         window = rows[start_frame:start_frame + num_frames]
 
-        pred_x = [r["pred_x_m"] for r in window if r["pred_x_m"] is not None]
-        pred_y = [r["pred_y_m"] for r in window if r["pred_y_m"] is not None]
+        pred_x = [r["pred_x_px"] for r in window if r["pred_x_px"] is not None]
+        pred_y = [r["pred_y_px"] for r in window if r["pred_y_px"] is not None]
 
         if pred_x:
             ax.plot(pred_x, pred_y, alpha=0.7, linewidth=1.2,
                     label=METHOD_LABELS[method])
 
         if not gt_plotted:
-            gt_x = [r["gt_x_m"] for r in window if r["gt_x_m"] is not None]
-            gt_y = [r["gt_y_m"] for r in window if r["gt_y_m"] is not None]
+            gt_x = [r["gt_x_px"] for r in window if r["gt_x_px"] is not None]
+            gt_y = [r["gt_y_px"] for r in window if r["gt_y_px"] is not None]
             if gt_x:
                 ax.plot(gt_x, gt_y, "k-", linewidth=2.5, alpha=0.9,
                         label="Ground Truth")
                 gt_plotted = True
 
-    ax.set_xlabel("Floor X (m)")
-    ax.set_ylabel("Floor Y (m)")
+    ax.set_xlabel("Image X (pixels)")
+    ax.set_ylabel("Image Y (pixels)")
     ax.set_title(f"Target Trajectories — {clip_name} "
                  f"(frames {start_frame}–{start_frame + num_frames})")
     ax.legend(loc="upper right")
     ax.set_aspect("equal")
+    ax.invert_yaxis()
     ax.grid(alpha=0.3)
 
     fig.tight_layout()

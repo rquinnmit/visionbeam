@@ -9,10 +9,17 @@ bounding boxes, then Gaussian-blurred into a spatial heatmap. The peak
 of the person-masked heatmap identifies the most active dancer.
 
 When a track ID is locked (e.g. via the operator UI), the target snaps to
-the centroid of that ID's bounding box instead of the heatmap peak.
+the bottom-center (feet) of that ID's bounding box instead of the
+heatmap peak.
 
 Beam masking prevents the system from chasing its own light, and a
 configurable min-motion threshold suppresses noise when the floor is idle.
+
+The output of `process_frame` is a target pixel coordinate in the original
+frame's coordinate system. No temporal smoothing is applied here; the
+caller (the live server or the offline evaluator) consumes the raw
+per-frame target. The deployed server feeds this pixel directly into the
+fitted pixel-to-pan/tilt calibration in `visionbeam.aim` to drive DMX.
 """
 
 from dataclasses import dataclass

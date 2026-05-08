@@ -7,6 +7,15 @@ tracker, and the detected boxes + chosen target pixel are returned as
 JSON. When pixel-aim calibration is loaded and auto-aim is on, the server
 also drives the DMX fixture.
 
+Live control loop:
+    HybridMethod.process_frame(frame) -> (u, v) in pixels
+    PixelAimCalibration.predict(u, v) -> (pan_deg, tilt_deg)
+    DMXConnection.aim(pan_deg, tilt_deg) -> DMX universe over USB
+
+There is no floor-coordinate projection and no temporal smoothing between
+the tracker's pixel output and DMX. The quadratic pixel-to-pan/tilt fit
+is the only spatial transform on the live path.
+
 Environment:
     VISIONBEAM_NO_DMX=1     run without DMX hardware (mock fixture)
     VISIONBEAM_DMX_PORT=... serial port (default /dev/ttyUSB0)

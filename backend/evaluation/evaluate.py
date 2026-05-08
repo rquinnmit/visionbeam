@@ -5,20 +5,26 @@ Runs each target-selection method (from evaluation.methods) on every
 recorded clip, logs per-frame predictions to CSV, then computes metrics
 by comparing predictions against ground truth. Outputs:
 
-- Per-clip CSVs: frame_number, method, pred_x, pred_y, gt_x, gt_y, error_m
-- Summary CSV:   clip, lighting_condition, method, mean_error_m,
-                 jitter_m_per_sec, fps
+- Per-clip CSVs: frame, pred_x_px, pred_y_px, gt_x_px, gt_y_px, error_px
+- Summary CSV:   clip, condition, method, mean_error_px,
+                 jitter_px_per_sec, fps
+
+All comparisons happen in pixel space. The deployed control loop maps
+target pixels to fixture pan/tilt via the operator-fitted quadratic
+calibration in visionbeam.aim; that mapping is irrelevant to whether one
+target-selection method is more accurate than another, so the harness
+stays in pixel space and reports raw Euclidean distance between predicted
+and ground-truth marker pixels.
 
 Metrics computed:
-1. Targeting Accuracy — mean Euclidean distance (meters) between predicted
-   and ground-truth floor coordinates.
+1. Targeting Accuracy — mean Euclidean distance (pixels) between predicted
+   and ground-truth marker locations.
 2. Target Stability (Jitter) — total path length of predictions per second.
 3. Robustness Drop-off — accuracy ratio between each condition and baseline.
 4. Throughput — average FPS per method on the evaluation hardware.
 
 Usage:
     python -m evaluation.evaluate --clips data/clips/ --gt data/gt/ \
-                                  --calibration calibration/homography.json \
                                   --output results/
 """
 
@@ -32,7 +38,6 @@ import time
 import cv2
 import numpy as np
 
-from visionbeam.calibration import FloorCalibration
 from visionbeam.tracker import HybridMethod
 from evaluation.methods import (
     TargetMethod,
@@ -71,7 +76,6 @@ def evaluate_clip(
     video_path: str,
     gt: dict[int, tuple[float, float]],
     method: TargetMethod,
-    calibration: FloorCalibration,
 ) -> tuple[list[dict], float]:
     """
     Run a single method on a video clip and compute per-frame metrics.
@@ -98,20 +102,11 @@ def evaluate_clip(
 
         gt_px = gt.get(frame_num)
 
-        pred_floor = None
-        gt_floor = None
-        error_m = None
-
-        if pred_px is not None:
-            pred_floor = calibration.pixel_to_floor(pred_px[0], pred_px[1])
-
-        if gt_px is not None:
-            gt_floor = calibration.pixel_to_floor(gt_px[0], gt_px[1])
-
-        if pred_floor is not None and gt_floor is not None:
-            error_m = math.hypot(
-                pred_floor[0] - gt_floor[0],
-                pred_floor[1] - gt_floor[1],
+        error_px = None
+        if pred_px is not None and gt_px is not None:
+            error_px = math.hypot(
+                pred_px[0] - gt_px[0],
+                pred_px[1] - gt_px[1],
             )
 
         results.append({
@@ -120,11 +115,7 @@ def evaluate_clip(
             "pred_y_px": pred_px[1] if pred_px else None,
             "gt_x_px": gt_px[0] if gt_px else None,
             "gt_y_px": gt_px[1] if gt_px else None,
-            "pred_x_m": pred_floor[0] if pred_floor else None,
-            "pred_y_m": pred_floor[1] if pred_floor else None,
-            "gt_x_m": gt_floor[0] if gt_floor else None,
-            "gt_y_m": gt_floor[1] if gt_floor else None,
-            "error_m": error_m,
+            "error_px": error_px,
         })
 
         frame_num += 1
@@ -144,14 +135,14 @@ def compute_summary(
     video_fps: float,
 ) -> dict:
     """Compute aggregate metrics from per-frame results."""
-    errors = [r["error_m"] for r in results if r["error_m"] is not None]
+    errors = [r["error_px"] for r in results if r["error_px"] is not None]
     mean_error = float(np.mean(errors)) if errors else None
 
     path_length = 0.0
     prev = None
     for r in results:
-        if r["pred_x_m"] is not None:
-            cur = (r["pred_x_m"], r["pred_y_m"])
+        if r["pred_x_px"] is not None:
+            cur = (r["pred_x_px"], r["pred_y_px"])
             if prev is not None:
                 path_length += math.hypot(cur[0] - prev[0], cur[1] - prev[1])
             prev = cur
@@ -163,8 +154,8 @@ def compute_summary(
         "clip": clip_name,
         "condition": condition,
         "method": method_name,
-        "mean_error_m": round(mean_error, 4) if mean_error is not None else None,
-        "jitter_m_per_sec": round(jitter, 4),
+        "mean_error_px": round(mean_error, 4) if mean_error is not None else None,
+        "jitter_px_per_sec": round(jitter, 4),
         "fps": round(avg_fps, 1),
     }
 
@@ -172,8 +163,7 @@ def compute_summary(
 def save_per_clip_csv(results: list[dict], output_path: str):
     """Write per-frame results for one method+clip to CSV."""
     fieldnames = [
-        "frame", "pred_x_px", "pred_y_px", "gt_x_px", "gt_y_px",
-        "pred_x_m", "pred_y_m", "gt_x_m", "gt_y_m", "error_m",
+        "frame", "pred_x_px", "pred_y_px", "gt_x_px", "gt_y_px", "error_px",
     ]
     with open(output_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -230,16 +220,12 @@ def main():
                         help="Directory containing video clips and metadata JSONs")
     parser.add_argument("--gt", type=str, default="data/gt",
                         help="Directory containing ground truth CSVs")
-    parser.add_argument("--calibration", type=str,
-                        default="calibration/homography.json",
-                        help="Path to saved homography JSON")
     parser.add_argument("--output", type=str, default="results",
                         help="Output directory for result CSVs")
     args = parser.parse_args()
 
     os.makedirs(args.output, exist_ok=True)
 
-    calibration = FloorCalibration.load(args.calibration)
     methods = build_methods()
     pairs = find_clip_pairs(args.clips, args.gt)
 
@@ -260,7 +246,7 @@ def main():
             print(f"  Method: {method_name} ...", end=" ", flush=True)
 
             results, avg_fps = evaluate_clip(
-                pair["video_path"], gt, method, calibration
+                pair["video_path"], gt, method
             )
 
             per_clip_path = os.path.join(
@@ -275,10 +261,10 @@ def main():
             )
             all_summaries.append(summary)
 
-            error_str = (f"{summary['mean_error_m']:.4f}m"
-                         if summary["mean_error_m"] is not None else "N/A")
+            error_str = (f"{summary['mean_error_px']:.2f}px"
+                         if summary["mean_error_px"] is not None else "N/A")
             print(f"error={error_str}, "
-                  f"jitter={summary['jitter_m_per_sec']:.4f}m/s, "
+                  f"jitter={summary['jitter_px_per_sec']:.2f}px/s, "
                   f"fps={summary['fps']}")
 
         print()
@@ -286,8 +272,8 @@ def main():
     summary_path = os.path.join(args.output, "summary.csv")
     with open(summary_path, "w", newline="") as f:
         writer = csv.DictWriter(
-            f, fieldnames=["clip", "condition", "method", "mean_error_m",
-                           "jitter_m_per_sec", "fps"]
+            f, fieldnames=["clip", "condition", "method", "mean_error_px",
+                           "jitter_px_per_sec", "fps"]
         )
         writer.writeheader()
         writer.writerows(all_summaries)
