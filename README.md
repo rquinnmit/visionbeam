@@ -61,9 +61,6 @@ python3 -m venv .venv
 source .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -r backend/requirements.txt
 ```
-
-The first run that loads YOLO will download `yolov8n.pt` automatically.
-
 Run the server:
 
 ```bash
@@ -117,54 +114,6 @@ The deployed pipeline uses exactly one calibration file. It is venue-specific, w
 | `backend/calibration/aim.json` | **live system** (`server.py`) | **Gitignored.** Quadratic pixel-to-pan/tilt fit produced by the calibration UI. This is the only spatial transform on the live path: target pixel → quadratic → DMX pan/tilt. |
 
 The offline evaluation harness does not require any calibration file. It compares each method's predicted pixel coordinate to the ground-truth marker pixel directly, in image space.
-
-## Research Evaluation
-
-The evaluation pipeline lives entirely in `backend/evaluation/` and runs offline against pre-recorded clips. All four target-selection methods (the three baselines plus the hybrid) implement the same `TargetMethod` interface — given a frame, return a target pixel — so they can be compared apples-to-apples on the same recordings.
-
-### Methods compared
-
-| Method | Detection | Motion signal | Implementation |
-|--------|-----------|---------------|----------------|
-| Frame Differencing | None | Classical (full-frame `cv2.absdiff`) | `evaluation/methods.py` |
-| Farneback Dense Flow | None | Classical (`cv2.calcOpticalFlowFarneback` magnitude) | `evaluation/methods.py` |
-| Detection Only | YOLOv8n + ByteTrack | None | `evaluation/methods.py` |
-| **Hybrid (VisionBeam)** | YOLOv8n + ByteTrack | Classical, masked to person bounding boxes | `visionbeam/tracker.py` |
-
-The hybrid is evaluated with `snap_to_feet=False` so the harness measures the raw heatmap peak directly; deployment uses `snap_to_feet=True` to project the peak to the dancer's feet.
-
-### Workflow
-
-```bash
-cd backend
-mkdir -p data/clips data/gt data/figures results
-
-# 1. Record clips. Interactive prompts pause between conditions so you can change the lights.
-python -m evaluation.record --camera 0 --output data/clips --duration 30
-
-# 2. Extract per-frame ground truth from a tracking marker (e.g. bright green plate).
-python -m evaluation.ground_truth \
-    --video data/clips/<your_clip>.mp4 \
-    --mode color \
-    --output data/gt \
-    --preview
-
-# Tune --hsv-low and --hsv-high until the marker tracks reliably under preview, then
-# re-run without --preview to write the final CSV. For each data/clips/foo.mp4,
-# ground_truth.py writes data/gt/foo_gt.csv. The evaluation will skip clips with no
-# matching GT file.
-
-# 3. Run all methods on all clips and write per-frame + summary CSVs.
-python -m evaluation.evaluate \
-    --clips data/clips \
-    --gt data/gt \
-    --output results
-
-# 4. Render figures.
-python -m evaluation.visualize --results results --output data/figures
-```
-
-Pass `--trajectory-clip <stem>` (filename minus `.mp4`) to `visualize` to plot a specific clip's trajectory; otherwise the first clip in the summary is used.
 
 ## Hardware Requirements
 
