@@ -89,27 +89,20 @@ function drawOverlay(canvas: HTMLCanvasElement, det: DetectionResult) {
     const w = t.x2 - t.x1;
     const h = t.y2 - t.y1;
 
-    // Glow
     ctx.save();
     ctx.shadowColor = color;
     ctx.shadowBlur = isLocked ? 22 : 12;
     ctx.lineWidth = isLocked ? 2.5 : 1.5;
     ctx.strokeStyle = color;
 
-    // Bracket-corner box rather than full rectangle — lighting console feel
     const c = Math.min(20, w * 0.18, h * 0.18);
     ctx.beginPath();
-    // top-left
     ctx.moveTo(t.x1, t.y1 + c); ctx.lineTo(t.x1, t.y1); ctx.lineTo(t.x1 + c, t.y1);
-    // top-right
     ctx.moveTo(t.x2 - c, t.y1); ctx.lineTo(t.x2, t.y1); ctx.lineTo(t.x2, t.y1 + c);
-    // bottom-right
     ctx.moveTo(t.x2, t.y2 - c); ctx.lineTo(t.x2, t.y2); ctx.lineTo(t.x2 - c, t.y2);
-    // bottom-left
     ctx.moveTo(t.x1 + c, t.y2); ctx.lineTo(t.x1, t.y2); ctx.lineTo(t.x1, t.y2 - c);
     ctx.stroke();
 
-    // Faint inner outline for locked
     if (isLocked) {
       ctx.globalAlpha = 0.35;
       ctx.lineWidth = 1;
@@ -120,10 +113,8 @@ function drawOverlay(canvas: HTMLCanvasElement, det: DetectionResult) {
     }
     ctx.restore();
 
-    // Label tag
     const label = isLocked ? `LOCKED · #${t.id}` : `TRK · #${t.id}`;
-    ctx.font =
-      '600 12px "JetBrains Mono", ui-monospace, Cascadia Code, monospace';
+    ctx.font = '600 12px "JetBrains Mono", ui-monospace, Cascadia Code, monospace';
     const metrics = ctx.measureText(label);
     const padX = 8, padY = 5, labelH = 22;
     const tagW = metrics.width + padX * 2;
@@ -136,7 +127,6 @@ function drawOverlay(canvas: HTMLCanvasElement, det: DetectionResult) {
     ctx.lineWidth = 1;
     ctx.strokeRect(tagX + 0.5, tagY + 0.5, tagW - 1, labelH - 1);
 
-    // Color stripe on left
     ctx.fillStyle = color;
     ctx.fillRect(tagX, tagY, 2, labelH);
 
@@ -165,7 +155,6 @@ function drawOverlay(canvas: HTMLCanvasElement, det: DetectionResult) {
 
   if (det.beam_px) {
     const [bx, by] = det.beam_px;
-    // Soft outer halo
     const grad = ctx.createRadialGradient(bx, by, 4, bx, by, 60);
     grad.addColorStop(0, "rgba(0, 229, 255, 0.55)");
     grad.addColorStop(0.5, "rgba(0, 229, 255, 0.18)");
@@ -175,7 +164,6 @@ function drawOverlay(canvas: HTMLCanvasElement, det: DetectionResult) {
     ctx.arc(bx, by, 60, 0, Math.PI * 2);
     ctx.fill();
 
-    // Bright core
     ctx.save();
     ctx.shadowColor = "#00e5ff";
     ctx.shadowBlur = 24;
@@ -183,7 +171,6 @@ function drawOverlay(canvas: HTMLCanvasElement, det: DetectionResult) {
     ctx.beginPath();
     ctx.arc(bx, by, 6, 0, Math.PI * 2);
     ctx.fill();
-    // Ring
     ctx.strokeStyle = "#00e5ff";
     ctx.lineWidth = 1.5;
     ctx.beginPath();
@@ -192,8 +179,7 @@ function drawOverlay(canvas: HTMLCanvasElement, det: DetectionResult) {
     ctx.restore();
 
     ctx.fillStyle = "#6ff3ff";
-    ctx.font =
-      '600 11px "JetBrains Mono", ui-monospace, monospace';
+    ctx.font = '600 11px "JetBrains Mono", ui-monospace, monospace';
     ctx.fillText("BEAM · SIM", bx + 24, by - 18);
   }
 }

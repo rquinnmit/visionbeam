@@ -1,24 +1,3 @@
-"""
-Ground truth extraction from recorded video.
-
-Detects a known tracking marker (bright retroreflector or specific-color
-LED) in each frame of a recorded clip and outputs the marker's (x, y)
-pixel position per frame as a CSV. Supports two modes:
-
-1. Color thresholding — HSV range isolation for a distinctly colored marker
-   (e.g., bright green LED not present in stage lighting palette).
-2. Brightness peak — For a retroreflector that appears as the brightest
-   small blob in an otherwise dim scene.
-
-When the marker is not detected in a frame (occlusion, failure), the
-frame is flagged and linearly interpolated from neighbors. The output
-CSV has columns: frame_number, timestamp_ms, x_px, y_px, detected (bool).
-
-Usage:
-    python -m evaluation.ground_truth --video data/clips/external_static_01.mp4 \
-                                      --mode color --output data/gt/
-"""
-
 import argparse
 import csv
 import os
@@ -37,7 +16,6 @@ def detect_color_marker(
     hsv_low: tuple[int, int, int],
     hsv_high: tuple[int, int, int],
 ) -> tuple[float, float] | None:
-    """Finds the centroid of the largest blob matching the HSV range."""
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(hsv, np.array(hsv_low), np.array(hsv_high))
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
@@ -60,7 +38,6 @@ def detect_color_marker(
 
 
 def detect_brightness_marker(frame: np.ndarray) -> tuple[float, float] | None:
-    """Finds the centroid of the brightest small blob in a dim scene."""
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (15, 15), 0)
 
@@ -83,10 +60,6 @@ def detect_brightness_marker(frame: np.ndarray) -> tuple[float, float] | None:
 
 
 def interpolate_gaps(records: list[dict]) -> list[dict]:
-    """
-    Linearly interpolates x_px and y_px for frames where detected=False,
-    using the nearest detected neighbors on each side.
-    """
     n = len(records)
     detected_indices = [i for i, r in enumerate(records) if r["detected"]]
     if len(detected_indices) < 2:
@@ -126,10 +99,6 @@ def extract_ground_truth(
     hsv_high: tuple[int, int, int] = DEFAULT_HSV_HIGH,
     preview: bool = False,
 ) -> list[dict]:
-    """
-    Runs marker detection on every frame of a video and returns
-    a list of per-frame records with interpolated gaps.
-    """
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise RuntimeError(f"Cannot open video: {video_path}")
@@ -190,7 +159,6 @@ def extract_ground_truth(
 
 
 def save_csv(records: list[dict], output_path: str):
-    """Write records to a CSV file."""
     fieldnames = ["frame", "timestamp_ms", "x_px", "y_px", "detected"]
     with open(output_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -200,7 +168,6 @@ def save_csv(records: list[dict], output_path: str):
 
 
 def parse_hsv(s: str) -> tuple[int, int, int]:
-    """Parse a comma-separated HSV triplet string."""
     parts = [int(x.strip()) for x in s.split(",")]
     if len(parts) != 3:
         raise argparse.ArgumentTypeError("HSV must be three comma-separated integers")
@@ -211,41 +178,12 @@ def main():
     parser = argparse.ArgumentParser(
         description="Extract ground truth marker positions from recorded video"
     )
-    parser.add_argument(
-        "--video",
-        type=str,
-        required=True,
-        help="Path to recorded video clip",
-    )
-    parser.add_argument(
-        "--mode",
-        choices=["color", "brightness"],
-        default="color",
-        help="Detection mode: 'color' (HSV) or 'brightness' (peak)",
-    )
-    parser.add_argument(
-        "--output",
-        type=str,
-        default="data/gt",
-        help="Output directory for GT CSV files",
-    )
-    parser.add_argument(
-        "--hsv-low",
-        type=parse_hsv,
-        default="35,100,100",
-        help="Lower HSV bound as 'H,S,V' (color mode)",
-    )
-    parser.add_argument(
-        "--hsv-high",
-        type=parse_hsv,
-        default="85,255,255",
-        help="Upper HSV bound as 'H,S,V' (color mode)",
-    )
-    parser.add_argument(
-        "--preview",
-        action="store_true",
-        help="Show live preview with marker overlay",
-    )
+    parser.add_argument("--video", type=str, required=True)
+    parser.add_argument("--mode", choices=["color", "brightness"], default="color")
+    parser.add_argument("--output", type=str, default="data/gt")
+    parser.add_argument("--hsv-low", type=parse_hsv, default="35,100,100")
+    parser.add_argument("--hsv-high", type=parse_hsv, default="85,255,255")
+    parser.add_argument("--preview", action="store_true")
     args = parser.parse_args()
 
     os.makedirs(args.output, exist_ok=True)

@@ -1,25 +1,3 @@
-"""
-Visualization and figure generation for the research report.
-
-Reads the summary and per-clip CSVs produced by evaluate.py and generates
-publication-ready matplotlib figures:
-
-1. Accuracy vs. Illumination (grouped bar / line chart)
-   — X: lighting condition, Y: mean targeting error (px), series: method.
-2. Trajectory Smoothing (2D pixel-space path plot)
-   — Overlays GT path with each method's predicted path for a selected
-     5-second window, showing relative jitter.
-3. Qualitative Failure Modes (image grid)
-   — Selects frames with highest error per method, renders the frame with
-     the method's internal state (heatmap, flow field, bounding boxes) and
-     the erroneous aim point annotated.
-
-All figures are saved as both PNG (for the report) and PDF (for LaTeX).
-
-Usage:
-    python -m evaluation.visualize --results results/ --output data/figures/
-"""
-
 import argparse
 import csv
 import os
@@ -49,7 +27,6 @@ METHOD_LABELS = {
 
 
 def load_summary(summary_path: str) -> list[dict]:
-    """Load the summary CSV from evaluate.py."""
     rows = []
     with open(summary_path, newline="") as f:
         reader = csv.DictReader(f)
@@ -63,7 +40,6 @@ def load_summary(summary_path: str) -> list[dict]:
 
 
 def load_per_clip_csv(path: str) -> list[dict]:
-    """Load a per-clip result CSV."""
     rows = []
     with open(path, newline="") as f:
         reader = csv.DictReader(f)
@@ -82,9 +58,6 @@ def load_per_clip_csv(path: str) -> list[dict]:
 
 
 def plot_accuracy_vs_illumination(summary: list[dict], output_dir: str):
-    """
-    Figure 1: Grouped bar chart — mean targeting error per condition per method.
-    """
     methods = list(METHOD_LABELS.keys())
     conditions = [c for c in CONDITION_ORDER
                   if any(r["condition"] == c for r in summary)]
@@ -117,16 +90,12 @@ def plot_accuracy_vs_illumination(summary: list[dict], output_dir: str):
 
     fig.tight_layout()
     for ext in ("png", "pdf"):
-        fig.savefig(os.path.join(output_dir, f"accuracy_vs_illumination.{ext}"),
-                    dpi=150)
+        fig.savefig(os.path.join(output_dir, f"accuracy_vs_illumination.{ext}"), dpi=150)
     plt.close(fig)
     print("  Saved: accuracy_vs_illumination.png/pdf")
 
 
 def plot_jitter_comparison(summary: list[dict], output_dir: str):
-    """
-    Figure 1b: Grouped bar chart — jitter per condition per method.
-    """
     methods = list(METHOD_LABELS.keys())
     conditions = [c for c in CONDITION_ORDER
                   if any(r["condition"] == c for r in summary)]
@@ -165,11 +134,6 @@ def plot_jitter_comparison(summary: list[dict], output_dir: str):
 
 def plot_trajectory(results_dir: str, output_dir: str, clip_name: str,
                     start_frame: int = 0, num_frames: int = 150):
-    """
-    Figure 2: 2D trajectory plot in pixel space.
-
-    Overlays GT path with each method's predicted path over a time window.
-    """
     methods = list(METHOD_LABELS.keys())
     fig, ax = plt.subplots(figsize=(8, 8))
 
@@ -187,15 +151,13 @@ def plot_trajectory(results_dir: str, output_dir: str, clip_name: str,
         pred_y = [r["pred_y_px"] for r in window if r["pred_y_px"] is not None]
 
         if pred_x:
-            ax.plot(pred_x, pred_y, alpha=0.7, linewidth=1.2,
-                    label=METHOD_LABELS[method])
+            ax.plot(pred_x, pred_y, alpha=0.7, linewidth=1.2, label=METHOD_LABELS[method])
 
         if not gt_plotted:
             gt_x = [r["gt_x_px"] for r in window if r["gt_x_px"] is not None]
             gt_y = [r["gt_y_px"] for r in window if r["gt_y_px"] is not None]
             if gt_x:
-                ax.plot(gt_x, gt_y, "k-", linewidth=2.5, alpha=0.9,
-                        label="Ground Truth")
+                ax.plot(gt_x, gt_y, "k-", linewidth=2.5, alpha=0.9, label="Ground Truth")
                 gt_plotted = True
 
     ax.set_xlabel("Image X (pixels)")
@@ -209,16 +171,12 @@ def plot_trajectory(results_dir: str, output_dir: str, clip_name: str,
 
     fig.tight_layout()
     for ext in ("png", "pdf"):
-        fig.savefig(os.path.join(output_dir, f"trajectory_{clip_name}.{ext}"),
-                    dpi=150)
+        fig.savefig(os.path.join(output_dir, f"trajectory_{clip_name}.{ext}"), dpi=150)
     plt.close(fig)
     print(f"  Saved: trajectory_{clip_name}.png/pdf")
 
 
 def plot_fps_comparison(summary: list[dict], output_dir: str):
-    """
-    Supplementary figure: throughput bar chart per method.
-    """
     methods = list(METHOD_LABELS.keys())
 
     fig, ax = plt.subplots(figsize=(7, 4))
@@ -248,17 +206,11 @@ def plot_fps_comparison(summary: list[dict], output_dir: str):
 
 def main():
     parser = argparse.ArgumentParser(description="Generate evaluation figures")
-    parser.add_argument("--results", type=str, default="results",
-                        help="Directory containing evaluate.py output CSVs")
-    parser.add_argument("--output", type=str, default="data/figures",
-                        help="Output directory for figures")
-    parser.add_argument("--trajectory-clip", type=str, default=None,
-                        help="Clip name for trajectory plot "
-                             "(e.g., 'fixture_external_dynamic_20260429_120000')")
-    parser.add_argument("--trajectory-start", type=int, default=0,
-                        help="Start frame for trajectory window")
-    parser.add_argument("--trajectory-frames", type=int, default=150,
-                        help="Number of frames in trajectory window")
+    parser.add_argument("--results", type=str, default="results")
+    parser.add_argument("--output", type=str, default="data/figures")
+    parser.add_argument("--trajectory-clip", type=str, default=None)
+    parser.add_argument("--trajectory-start", type=int, default=0)
+    parser.add_argument("--trajectory-frames", type=int, default=150)
     args = parser.parse_args()
 
     os.makedirs(args.output, exist_ok=True)

@@ -1,17 +1,3 @@
-"""
-Dataset recording tool.
-
-Captures video clips from the webcam under each of the 4 controlled
-lighting conditions (ambient, external light static, external light
-dynamic, fixture + external dynamic). Saves each clip as a timestamped
-video file alongside a metadata JSON containing the lighting condition
-label, camera index, resolution, FPS, and duration. Optionally triggers
-DMX fixture states to automate the lighting changes between conditions.
-
-Usage:
-    python -m evaluation.record --camera 0 --output data/clips/
-"""
-
 import argparse
 import json
 import os
@@ -36,10 +22,6 @@ def record_clip(
     duration: float,
     fps: float,
 ) -> str:
-    """
-    Records a single video clip and saves it with a metadata sidecar.
-    Returns the path to the saved video file.
-    """
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -104,45 +86,23 @@ def main():
     parser = argparse.ArgumentParser(
         description="Record evaluation dataset clips under different lighting conditions"
     )
-    parser.add_argument(
-        "--camera",
-        type=int,
-        default=0,
-        help="Camera device index",
-    )
-    parser.add_argument(
-        "--output",
-        type=str,
-        default="data/clips",
-        help="Output directory for clips and metadata",
-    )
-    parser.add_argument(
-        "--duration",
-        type=float,
-        default=45.0,
-        help="Duration of each clip in seconds",
-    )
-    parser.add_argument(
-        "--fps",
-        type=float,
-        default=30.0,
-        help="Recording frame rate",
-    )
-    parser.add_argument(
-        "--conditions",
-        nargs="+",
-        default=LIGHTING_CONDITIONS,
-        help="Lighting conditions to record",
-    )
+    parser.add_argument("--camera", type=int, default=0)
+    parser.add_argument("--output", type=str, default="data/clips")
+    parser.add_argument("--duration", type=float, default=45.0)
+    parser.add_argument("--fps", type=float, default=30.0)
+    parser.add_argument("--conditions", nargs="+", default=LIGHTING_CONDITIONS)
     args = parser.parse_args()
+
     os.makedirs(args.output, exist_ok=True)
     cap = cv2.VideoCapture(args.camera)
     if not cap.isOpened():
         print(f"Error: Cannot open camera {args.camera}")
         return
+
     print(f"Recording {len(args.conditions)} clips to {args.output}/")
     print(f"Duration: {args.duration}s each | FPS: {args.fps}")
     print()
+
     try:
         for i, condition in enumerate(args.conditions):
             print(f"[{i + 1}/{len(args.conditions)}] Condition: {condition}")
@@ -154,6 +114,7 @@ def main():
     finally:
         cap.release()
         cv2.destroyAllWindows()
+
     print("Done.")
 
 

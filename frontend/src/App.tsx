@@ -38,7 +38,6 @@ export default function App() {
   const controlsRef = useRef<HTMLDivElement | null>(null);
   const viewportWrapRef = useRef<HTMLDivElement | null>(null);
 
-  // GSAP entrance choreography
   useEffect(() => {
     if (!appRef.current) return;
     const ctx = gsap.context(() => {
@@ -54,7 +53,6 @@ export default function App() {
     return () => ctx.revert();
   }, []);
 
-  // Lock pulse — kick a quick flash when locked_id changes to a non-null value
   const prevLockRef = useRef<number | null>(null);
   useEffect(() => {
     const id = detection?.locked_id ?? null;
@@ -173,7 +171,7 @@ export default function App() {
   useEffect(() => {
     if (wsState !== "open") return;
     sendControl({ type: "set_lamp", dimmer: 255, r: 0, g: 0, b: 0, w: 255 });
-  }, [wsState, mode, sendControl]);
+  }, [wsState, sendControl]);
 
   const setLockOptimistic = useCallback((id: number | null) => {
     setDetection((d) => (d ? { ...d, locked_id: id } : d));
@@ -191,7 +189,6 @@ export default function App() {
         });
         return;
       }
-      // run mode: lock/unlock
       if (hitId === null) {
         sendControl({ type: "unlock" });
         setLockOptimistic(null);
@@ -209,8 +206,6 @@ export default function App() {
   const handleModeChange = useCallback(
     (next: Mode) => {
       setMode(next);
-      // Disable auto-aim while calibrating so the live aim doesn't fight
-      // the manual sliders.
       sendControl({ type: "auto_aim", enabled: next === "run" });
       sendControl({ type: "set_lamp", dimmer: 255, r: 0, g: 0, b: 0, w: 255 });
       if (next === "calibrate") {
@@ -266,23 +261,23 @@ export default function App() {
       <header className="console-header" ref={headerRef}>
         <div className="brand">
           <span className="brand-mark-wrap">
-          <svg className="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
-            <defs>
-              <linearGradient id="vb-ring" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#ff2e93" />
-                <stop offset="100%" stopColor="#00e5ff" />
-              </linearGradient>
-            </defs>
-            <circle cx="32" cy="32" r="20" fill="none" stroke="url(#vb-ring)" strokeWidth="2" />
-            <circle cx="32" cy="32" r="13" fill="none" stroke="#00e5ff" strokeWidth="1" opacity="0.65" />
-            <circle cx="32" cy="32" r="3.2" fill="#ff2e93" />
-            <g stroke="#f5f1ff" strokeWidth="1" strokeLinecap="square" opacity="0.85">
-              <line x1="32" y1="6" x2="32" y2="12" />
-              <line x1="32" y1="52" x2="32" y2="58" />
-              <line x1="6" y1="32" x2="12" y2="32" />
-              <line x1="52" y1="32" x2="58" y2="32" />
-            </g>
-          </svg>
+            <svg className="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
+              <defs>
+                <linearGradient id="vb-ring" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#ff2e93" />
+                  <stop offset="100%" stopColor="#00e5ff" />
+                </linearGradient>
+              </defs>
+              <circle cx="32" cy="32" r="20" fill="none" stroke="url(#vb-ring)" strokeWidth="2" />
+              <circle cx="32" cy="32" r="13" fill="none" stroke="#00e5ff" strokeWidth="1" opacity="0.65" />
+              <circle cx="32" cy="32" r="3.2" fill="#ff2e93" />
+              <g stroke="#f5f1ff" strokeWidth="1" strokeLinecap="square" opacity="0.85">
+                <line x1="32" y1="6" x2="32" y2="12" />
+                <line x1="32" y1="52" x2="32" y2="58" />
+                <line x1="6" y1="32" x2="12" y2="32" />
+                <line x1="52" y1="32" x2="58" y2="32" />
+              </g>
+            </svg>
           </span>
           <div className="brand-text">
             <span className="brand-title">VISIONBEAM</span>

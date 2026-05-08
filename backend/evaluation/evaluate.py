@@ -1,33 +1,3 @@
-"""
-Evaluation harness.
-
-Runs each target-selection method (from evaluation.methods) on every
-recorded clip, logs per-frame predictions to CSV, then computes metrics
-by comparing predictions against ground truth. Outputs:
-
-- Per-clip CSVs: frame, pred_x_px, pred_y_px, gt_x_px, gt_y_px, error_px
-- Summary CSV:   clip, condition, method, mean_error_px,
-                 jitter_px_per_sec, fps
-
-All comparisons happen in pixel space. The deployed control loop maps
-target pixels to fixture pan/tilt via the operator-fitted quadratic
-calibration in visionbeam.aim; that mapping is irrelevant to whether one
-target-selection method is more accurate than another, so the harness
-stays in pixel space and reports raw Euclidean distance between predicted
-and ground-truth marker pixels.
-
-Metrics computed:
-1. Targeting Accuracy — mean Euclidean distance (pixels) between predicted
-   and ground-truth marker locations.
-2. Target Stability (Jitter) — total path length of predictions per second.
-3. Robustness Drop-off — accuracy ratio between each condition and baseline.
-4. Throughput — average FPS per method on the evaluation hardware.
-
-Usage:
-    python -m evaluation.evaluate --clips data/clips/ --gt data/gt/ \
-                                  --output results/
-"""
-
 import argparse
 import csv
 import json
@@ -48,12 +18,6 @@ from evaluation.methods import (
 
 
 def build_methods() -> dict[str, TargetMethod]:
-    """Instantiate all methods to evaluate.
-
-    Hybrid runs with snap_to_feet=False so the evaluation compares the raw
-    motion-heatmap peak against the other methods' pixel outputs (which all
-    return body-located points). Deployment still uses snap_to_feet=True.
-    """
     return {
         "frame_diff": FrameDiffMethod(),
         "farneback": FarnebackFlowMethod(),
@@ -63,7 +27,6 @@ def build_methods() -> dict[str, TargetMethod]:
 
 
 def load_ground_truth(gt_path: str) -> dict[int, tuple[float, float]]:
-    """Load a GT CSV into a dict mapping frame number to (x_px, y_px)."""
     gt = {}
     with open(gt_path, newline="") as f:
         reader = csv.DictReader(f)
@@ -77,11 +40,6 @@ def evaluate_clip(
     gt: dict[int, tuple[float, float]],
     method: TargetMethod,
 ) -> tuple[list[dict], float]:
-    """
-    Run a single method on a video clip and compute per-frame metrics.
-
-    Returns (per-frame results list, average FPS).
-    """
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise RuntimeError(f"Cannot open video: {video_path}")
@@ -134,7 +92,6 @@ def compute_summary(
     method_name: str,
     video_fps: float,
 ) -> dict:
-    """Compute aggregate metrics from per-frame results."""
     errors = [r["error_px"] for r in results if r["error_px"] is not None]
     mean_error = float(np.mean(errors)) if errors else None
 
@@ -161,7 +118,6 @@ def compute_summary(
 
 
 def save_per_clip_csv(results: list[dict], output_path: str):
-    """Write per-frame results for one method+clip to CSV."""
     fieldnames = [
         "frame", "pred_x_px", "pred_y_px", "gt_x_px", "gt_y_px", "error_px",
     ]
@@ -175,13 +131,6 @@ def save_per_clip_csv(results: list[dict], output_path: str):
 
 
 def find_clip_pairs(clips_dir: str, gt_dir: str) -> list[dict]:
-    """
-    Match video clips with their ground truth CSVs.
-
-    Expects clip files named like 'external_static_20260429_120000.mp4'
-    with sidecar JSON 'external_static_20260429_120000.json' and GT files
-    named 'external_static_20260429_120000_gt.csv'.
-    """
     pairs = []
     for fname in sorted(os.listdir(clips_dir)):
         if not fname.endswith(".mp4"):
@@ -216,12 +165,9 @@ def find_clip_pairs(clips_dir: str, gt_dir: str) -> list[dict]:
 
 def main():
     parser = argparse.ArgumentParser(description="Run evaluation harness")
-    parser.add_argument("--clips", type=str, default="data/clips",
-                        help="Directory containing video clips and metadata JSONs")
-    parser.add_argument("--gt", type=str, default="data/gt",
-                        help="Directory containing ground truth CSVs")
-    parser.add_argument("--output", type=str, default="results",
-                        help="Output directory for result CSVs")
+    parser.add_argument("--clips", type=str, default="data/clips")
+    parser.add_argument("--gt", type=str, default="data/gt")
+    parser.add_argument("--output", type=str, default="results")
     args = parser.parse_args()
 
     os.makedirs(args.output, exist_ok=True)
@@ -245,9 +191,7 @@ def main():
         for method_name, method in methods.items():
             print(f"  Method: {method_name} ...", end=" ", flush=True)
 
-            results, avg_fps = evaluate_clip(
-                pair["video_path"], gt, method
-            )
+            results, avg_fps = evaluate_clip(pair["video_path"], gt, method)
 
             per_clip_path = os.path.join(
                 args.output, f"{pair['clip_name']}_{method_name}.csv"
@@ -273,7 +217,7 @@ def main():
     with open(summary_path, "w", newline="") as f:
         writer = csv.DictWriter(
             f, fieldnames=["clip", "condition", "method", "mean_error_px",
-                           "jitter_px_per_sec", "fps"]
+                           "jitter_px_per_sec", "fps"],
         )
         writer.writeheader()
         writer.writerows(all_summaries)

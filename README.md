@@ -32,23 +32,24 @@ backend/                            # Python: tracker, calibration, DMX, FastAPI
 └── results/                        # Per-clip and summary CSVs from evaluate.py (gitignored)
 
 frontend/                           # Vite + React + TypeScript browser client
-├── index.html
+├── index.html                      # Loads Google Fonts, grain SVG filter, scanlines overlay
 ├── package.json
 ├── vite.config.ts
+├── public/
+│   └── favicon.svg                 # Magenta/cyan ring mark (matches in-app brand glyph)
 └── src/
     ├── main.tsx
-    ├── App.tsx                     # WebSocket lifecycle, mode (run / calibrate), control messages
-    ├── Viewport.tsx                # Live video + overlay (tracks, target, simulated beam)
+    ├── App.tsx                     # WebSocket lifecycle, mode (run / calibrate), GSAP intro, control messages
+    ├── Viewport.tsx                # Live video + overlay (tracks, target, simulated beam, HUD frame)
     ├── CalibrationPanel.tsx        # Pan/tilt sliders, sample/fit/clear controls, RMS readout
     ├── camera.ts                   # getUserMedia + JPEG capture helpers
     ├── types.ts                    # Shared WebSocket message contracts
-    └── styles.css
+    ├── styles.css                  # Stage-console theme: magenta/cyan duotone, grain, scanlines
+    └── vite-env.d.ts
 
-final_report/
-├── draft.md                        # Working draft of the paper
-├── draft.tex / draft.pdf           # LaTeX build
-└── experiments_and_findings.md     # Source of truth for the numbers and their interpretation
 ```
+
+The CVPR-style writeup of this project lives on Overleaf.
 
 ## How the live system fits together
 
@@ -157,7 +158,7 @@ mkdir -p data/clips data/gt data/figures results
 # 1. Record clips. Interactive prompts pause between conditions so you can change the lights.
 python -m evaluation.record --camera 0 --output data/clips --duration 30
 
-# 2. Extract per-frame ground truth from a tracking marker (e.g. green LED).
+# 2. Extract per-frame ground truth from a tracking marker (e.g. bright green plate).
 python -m evaluation.ground_truth \
     --video data/clips/<your_clip>.mp4 \
     --mode color \
@@ -204,11 +205,11 @@ Computed per clip and aggregated over the dataset by `evaluate.py`:
 Across 20 clips (4 conditions × 5 reps), the dataset shows:
 
 * **Detection-only** has the lowest absolute targeting error in every condition, but its apparent stability is partially a failure-mode artifact: under fixture lighting its jitter drops because YOLO confidence sags and frames return `None` rather than because predictions are genuinely steadier.
-* **Hybrid** is consistently ~100 px behind detection in absolute pixel error — a geometric offset, not a lighting artifact. The dancer wears the green LED marker on their chest, which sits close to the geometric center of a vertical full-body bounding box, so detection's centroid lands near the marker by construction; hybrid's heatmap peak instead lands on whichever body part is moving fastest (often a swinging limb), pulling its prediction off the chest by a body-width-scale offset. See §6.1 of `experiments_and_findings.md`. Critically, this gap is roughly *constant* across conditions.
+* **Hybrid** is consistently ~100 px behind detection in absolute pixel error — a geometric offset, not a lighting artifact. The dancer wears a bright green plate marker on their chest, which sits close to the geometric center of a vertical full-body bounding box, so detection's centroid lands near the marker by construction; hybrid's heatmap peak instead lands on whichever body part is moving fastest (often a swinging limb), pulling its prediction off the chest by a body-width-scale offset. Critically, this gap is roughly *constant* across conditions.
 * **Hybrid degrades the least under adversity.** From ambient to fixture-active lighting, hybrid's accuracy worsens by 48% and its jitter by 14% — the smallest relative degradation of any method. Frame differencing and Farneback flow more than double in jitter. Detection's accuracy slope is +55%.
 * **Hybrid sustains real-time processing speed** (~67 FPS, ~1.8× detection-only) thanks to running YOLO every other frame and reusing ByteTrack predictions in between.
 
-Full numbers, caveats, per-clip breakdowns, and outlier discussion are in [`final_report/experiments_and_findings.md`](final_report/experiments_and_findings.md). The accompanying paper draft is at [`final_report/draft.pdf`](final_report/draft.pdf).
+Full numbers, caveats, and discussion are in the writeup on Overleaf.
 
 ## Hardware Requirements
 
@@ -232,4 +233,5 @@ Full numbers, caveats, per-clip breakdowns, and outlier discussion are in [`fina
 **Frontend (Node 18+):**
 
 * `react`, `react-dom` (React 19).
+* `gsap` — entrance choreography and the lock-on brightness pulse.
 * `vite`, `@vitejs/plugin-react`, `typescript`.

@@ -2,7 +2,14 @@
   "permissions": {
     "allow": [
       "Bash(npm install:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(python -c \"import ast, pathlib, sys:*)",
+      "Bash(python -c \":*)",
+      "Bash(python:*)",
+      "Bash(cd:*)",
+      "Bash(rm demo_frame.png)",
+      "Bash(mv console_demo.png console.png)",
+      "Bash(rm paper.tex)"
     ]
   }
 }
