@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { gsap } from "gsap";
 import { CalibrationPanel } from "./CalibrationPanel";
 import { captureJpeg, listVideoDevices, openCamera, stopStream } from "./camera";
 import { Viewport } from "./Viewport";
@@ -31,6 +32,41 @@ export default function App() {
     typeof document !== "undefined" ? document.createElement("canvas") : null!,
   );
   const inFlightRef = useRef(false);
+
+  const appRef = useRef<HTMLDivElement | null>(null);
+  const headerRef = useRef<HTMLDivElement | null>(null);
+  const controlsRef = useRef<HTMLDivElement | null>(null);
+  const viewportWrapRef = useRef<HTMLDivElement | null>(null);
+
+  // GSAP entrance choreography
+  useEffect(() => {
+    if (!appRef.current) return;
+    const ctx = gsap.context(() => {
+      gsap.set([headerRef.current, controlsRef.current, viewportWrapRef.current], {
+        opacity: 0,
+        y: 14,
+      });
+      const tl = gsap.timeline({ defaults: { ease: "expo.out" } });
+      tl.to(headerRef.current, { opacity: 1, y: 0, duration: 0.9 })
+        .to(controlsRef.current, { opacity: 1, y: 0, duration: 0.7 }, "-=0.55")
+        .to(viewportWrapRef.current, { opacity: 1, y: 0, duration: 0.9 }, "-=0.45");
+    }, appRef);
+    return () => ctx.revert();
+  }, []);
+
+  // Lock pulse — kick a quick flash when locked_id changes to a non-null value
+  const prevLockRef = useRef<number | null>(null);
+  useEffect(() => {
+    const id = detection?.locked_id ?? null;
+    if (id !== null && id !== prevLockRef.current && viewportWrapRef.current) {
+      gsap.fromTo(
+        viewportWrapRef.current,
+        { filter: "brightness(1.6) saturate(1.4)" },
+        { filter: "brightness(1) saturate(1)", duration: 0.55, ease: "power3.out" },
+      );
+    }
+    prevLockRef.current = id;
+  }, [detection?.locked_id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -218,11 +254,67 @@ export default function App() {
     sendControl({ type: "calibration_clear" });
   }, [sendControl]);
 
+  const locked = detection?.locked_id != null;
+
   return (
-    <div className="app">
-      <div className="controls">
-        <label>
-          Camera:{" "}
+    <div
+      className="app"
+      ref={appRef}
+      data-mode={mode}
+      data-locked={locked ? "true" : "false"}
+    >
+      <header className="console-header" ref={headerRef}>
+        <div className="brand">
+          <span className="brand-mark-wrap">
+          <svg className="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
+            <defs>
+              <linearGradient id="vb-ring" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#ff2e93" />
+                <stop offset="100%" stopColor="#00e5ff" />
+              </linearGradient>
+            </defs>
+            <circle cx="32" cy="32" r="20" fill="none" stroke="url(#vb-ring)" strokeWidth="2" />
+            <circle cx="32" cy="32" r="13" fill="none" stroke="#00e5ff" strokeWidth="1" opacity="0.65" />
+            <circle cx="32" cy="32" r="3.2" fill="#ff2e93" />
+            <g stroke="#f5f1ff" strokeWidth="1" strokeLinecap="square" opacity="0.85">
+              <line x1="32" y1="6" x2="32" y2="12" />
+              <line x1="32" y1="52" x2="32" y2="58" />
+              <line x1="6" y1="32" x2="12" y2="32" />
+              <line x1="52" y1="32" x2="58" y2="32" />
+            </g>
+          </svg>
+          </span>
+          <div className="brand-text">
+            <span className="brand-title">VISIONBEAM</span>
+            <span className="brand-sub">stage tracking · console v0.1</span>
+          </div>
+        </div>
+        <div />
+        <div className="console-meta">
+          <div className="meta-block">
+            <span>mode</span>
+            <span className="meta-val">{mode === "run" ? "PERFORM" : "CALIBRATE"}</span>
+          </div>
+          <div className="meta-block">
+            <span>fixture</span>
+            <span className="meta-val">
+              {detection?.dmx_type ? detection.dmx_type.toUpperCase() : "—"}
+            </span>
+          </div>
+          <div className="meta-block">
+            <span>aim</span>
+            <span className="meta-val">
+              {detection?.pan != null && detection?.tilt != null
+                ? `${detection.pan.toFixed(1)}° / ${detection.tilt.toFixed(1)}°`
+                : "—"}
+            </span>
+          </div>
+        </div>
+      </header>
+
+      <div className="controls" ref={controlsRef}>
+        <label className="field">
+          <span>cam</span>
           <select
             value={deviceId ?? ""}
             onChange={(e) => setDeviceId(e.target.value || null)}
@@ -235,9 +327,11 @@ export default function App() {
             ))}
           </select>
         </label>
+
         <span className={`status ${wsState === "open" ? "connected" : "disconnected"}`}>
-          ws: {wsState}
+          ws · {wsState}
         </span>
+
         <div className="mode-toggle">
           <button
             className={mode === "run" ? "active" : ""}
@@ -252,22 +346,22 @@ export default function App() {
             Calibrate
           </button>
         </div>
-        {detection && (
-          <span className="status">
-            dmx: {detection.dmx_type}
-            {detection.pan != null && detection.tilt != null
-              ? ` · aim ${detection.pan.toFixed(1)}° / ${detection.tilt.toFixed(1)}°`
-              : ""}
+
+        {locked && (
+          <span className="readout">
+            target lock <strong>#{detection?.locked_id}</strong>
           </span>
         )}
-        {mode === "run" && detection?.locked_id != null && (
+
+        {mode === "run" && locked && (
           <button
+            className="btn-unlock"
             onClick={() => {
               sendControl({ type: "unlock" });
               setLockOptimistic(null);
             }}
           >
-            Unlock #{detection.locked_id}
+            ✕ release #{detection?.locked_id}
           </button>
         )}
       </div>
@@ -287,12 +381,14 @@ export default function App() {
         />
       )}
 
-      <Viewport
-        stream={stream}
-        detection={detection}
-        onClick={handleViewportClick}
-        videoRef={videoRef}
-      />
+      <div className="viewport-wrap" ref={viewportWrapRef}>
+        <Viewport
+          stream={stream}
+          detection={detection}
+          onClick={handleViewportClick}
+          videoRef={videoRef}
+        />
+      </div>
     </div>
   );
 }
