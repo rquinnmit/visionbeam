@@ -2,7 +2,7 @@
 
 ![VisionBeam operator console in run mode, showing two tracked people and one locked target with simulated beam](console.png)
 
-A vision-driven autonomous light fixture that finds the most active person in a room and follows them in real time. It requires no body-worn beacons, pre-programmed cues, or specialized cameras. A webcam in the browser sends frames to a Python server running a hybrid YOLOv8 + ByteTrack + masked motion-heatmap tracker, which maps the target pixel to fixture pan/tilt over USB-to-DMX512.
+A vision-driven autonomous light framework that finds the most active person in a room and follows them in real time. It requires no body-worn beacons, pre-programmed cues, or specialized cameras. A webcam in the browser sends frames to a Python server running a hybrid YOLOv8 + ByteTrack + masked motion-heatmap tracker, which maps the target pixel to fixture pan/tilt over USB-to-DMX512.
 
 Built for MIT 6.S058 (Introduction to Computer Vision) to evaluate whether combining a deep-learning person detector with classical motion analysis is more robust than either technique alone under hostile stage lighting.
 
