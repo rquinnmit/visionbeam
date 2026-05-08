@@ -2,79 +2,63 @@
 
 ![VisionBeam operator console in run mode, showing two tracked people and one locked target with simulated beam](console.png)
 
-## Introduction
+A vision-driven autonomous light fixture that finds the most active person in a room and follows them in real time. It requires no body-worn beacons, pre-programmed cues, or specialized cameras. A webcam in the browser sends frames to a Python server running a hybrid YOLOv8 + ByteTrack + masked motion-heatmap tracker, which maps the target pixel to fixture pan/tilt over USB-to-DMX512.
 
-VisionBeam is a vision-driven autonomous light fixture that finds the most active person in a room and follows them in real time. It requires no body-worn beacons, no pre-programmed cues, and no specialized cameras. A webcam in the browser sends frames to a Python server, the server runs a hybrid YOLOv8 + ByteTrack + masked motion-heatmap tracker, and the resulting target pixel is mapped to fixture pan/tilt and pushed out over USB-to-DMX512.
-
-The project was constructed for MIT 6.S058 - Introduction to Computer Vision. The core question is whether combining a deep-learning person detector with classical motion analysis is genuinely more robust than either technique on its own when stage lighting is hostile. An evaluation harness records clips under four controlled lighting conditions, extracts ground truth from a colored marker, runs four target-selection methods on every clip, and writes accuracy / jitter / FPS metrics and figures.
+Built for MIT 6.S058 (Introduction to Computer Vision) to evaluate whether combining a deep-learning person detector with classical motion analysis is more robust than either technique alone under hostile stage lighting.
 
 ## Project Structure
 
 ```
-backend/                            # Python: tracker, calibration, DMX, FastAPI server, eval
-├── server.py                       # FastAPI + WebSocket: browser frames in, detections + DMX out
+backend/
+├── server.py                       FastAPI + WebSocket entry point
 ├── requirements.txt
 ├── visionbeam/
-│   ├── base.py                     # TargetMethod ABC shared by the production tracker and baselines
-│   ├── tracker.py                  # HybridMethod: YOLOv8 + ByteTrack + person-masked motion heatmap
-│   ├── aim.py                      # PixelAimCalibration: quadratic pixel -> pan/tilt fit (live system)
-│   └── dmx.py                      # USB-to-DMX512 serial driver, fixture profile, MockDMX fallback
-├── evaluation/
-│   ├── methods.py                  # Baseline targets: frame diff, Farneback flow, detection-only
-│   ├── record.py                   # Records 4-condition lighting dataset from a webcam
-│   ├── ground_truth.py             # HSV / brightness marker extraction -> per-frame CSV
-│   ├── evaluate.py                 # Runs every method on every clip, writes per-clip + summary CSVs
-│   └── visualize.py                # Matplotlib figures (accuracy, jitter, FPS, trajectory)
-├── calibration/
-│   └── aim.json                    # Pixel->pan/tilt calibration (gitignored, written by UI)
-├── config/
-│   └── fixture_zq02360_15ch.json   # 15-channel ZQ02360 / UKing 120W ring spot used in development
-├── data/                           # Recorded clips, ground truth, figures (gitignored, regenerable)
-└── results/                        # Per-clip and summary CSVs from evaluate.py (gitignored)
+│   ├── tracker.py                  HybridMethod: YOLOv8 + ByteTrack + motion heatmap
+│   ├── aim.py                      Quadratic pixel → pan/tilt calibration
+│   └── dmx.py                      USB-to-DMX512 driver
+├── evaluation/                     Offline eval: record, ground truth, metrics, figures
+├── calibration/                    aim.json (gitignored, venue-specific)
+└── config/                         DMX fixture profile
 
-frontend/                           # Vite + React + TypeScript browser client
-├── index.html                      # Loads Google Fonts, grain SVG filter, scanlines overlay
-├── package.json
-├── vite.config.ts
-├── public/
-│   └── favicon.svg                 # Magenta/cyan ring mark (matches in-app brand glyph)
-└── src/
-    ├── main.tsx
-    ├── App.tsx                     # WebSocket lifecycle, mode (run / calibrate), GSAP intro, control messages
-    ├── Viewport.tsx                # Live video + overlay (tracks, target, simulated beam, HUD frame)
-    ├── CalibrationPanel.tsx        # Pan/tilt sliders, sample/fit/clear controls, RMS readout
-    ├── camera.ts                   # getUserMedia + JPEG capture helpers
-    ├── types.ts                    # Shared WebSocket message contracts
-    ├── styles.css                  # Stage-console theme: magenta/cyan duotone, grain, scanlines
-    └── vite-env.d.ts
-
+frontend/
+├── src/
+│   ├── App.tsx                     WebSocket lifecycle, run/calibrate modes
+│   ├── Viewport.tsx                Live video + tracking overlay
+│   └── CalibrationPanel.tsx        Pan/tilt sliders, sample/fit controls
+└── package.json
 ```
 
 ## Getting Started
 
-### 1. Backend
+### Prerequisites
 
-From the repository root:
+- Python 3.10+
+- Node.js 18+
+- A webcam (720p is sufficient)
+- *(Optional)* A DMX moving head + USB-to-DMX512 adapter
+
+### 1. Backend
 
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate     # Windows: .venv\Scripts\activate
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r backend/requirements.txt
 ```
-Run the server:
+
+Start the server (no DMX hardware needed):
 
 ```bash
 cd backend
 VISIONBEAM_NO_DMX=1 uvicorn server:app --reload
 ```
 
-Environment variables:
+#### Environment Variables
 
 | Variable | Purpose |
 |----------|---------|
-| `VISIONBEAM_NO_DMX=1` | Force `MockDMX`. No hardware required. The UI shows a synthetic beam dot. |
-| `VISIONBEAM_DMX_PORT=/dev/tty.usbserial-XXXX` | Override DMX serial port. Otherwise the server scans `/dev/tty.usbserial-*`, `/dev/tty.usbmodem*`, `/dev/ttyUSB*`, `/dev/ttyACM*` and uses the first match, falling back to `MockDMX`. |
-| `VISIONBEAM_FIXTURE=path/to/profile.json` | Override fixture profile. Default: `backend/config/fixture_zq02360_15ch.json`. |
+| `VISIONBEAM_NO_DMX=1` | Use `MockDMX` — no hardware required, UI shows a synthetic beam dot |
+| `VISIONBEAM_DMX_PORT=/dev/tty.usbserial-XXXX` | Override DMX serial port (otherwise auto-detected) |
+| `VISIONBEAM_FIXTURE=path/to/profile.json` | Override fixture profile (default: `backend/config/fixture_zq02360_15ch.json`) |
 
 ### 2. Frontend
 
@@ -84,58 +68,19 @@ npm install
 npm run dev
 ```
 
-By default the client connects to `ws://127.0.0.1:8000/ws/detect`. Override with `VITE_WS_URL` if you run the server on a different host or port:
+Open the printed Vite URL, grant camera access, and the live tracking overlay should appear. If the backend is on a different host:
 
 ```bash
 VITE_WS_URL=ws://192.168.1.50:8000/ws/detect npm run dev
 ```
 
-Open the printed Vite URL in a browser, grant camera access, pick a camera from the dropdown, and the live tracking overlay should appear within a second of the WebSocket reaching `open`.
+### 3. Calibration (live fixture only)
 
-### 3. Pixel-to-aim calibration (live system)
+Calibration maps pixel coordinates to DMX pan/tilt via a quadratic fit. It is only needed when driving a real fixture.
 
-The live tracking-to-DMX path uses a quadratic pixel-to-pan/tilt mapping fit from operator clicks; see `PixelAimCalibration` in [`backend/visionbeam/aim.py`](backend/visionbeam/aim.py). To set it up:
+1. Switch the UI to **Calibrate** mode.
+2. Use the **Pan/Tilt** sliders to aim the fixture, then click where the beam lands in the camera view. Repeat for ≥ 6 points spread across the frame.
+3. Click **Fit** — the server solves a least-squares fit and saves coefficients to `backend/calibration/aim.json` (gitignored, venue-specific).
+4. Switch back to **Run** to start live tracking.
 
-1. With the camera and fixture both visible, switch the UI to **Calibrate**. Auto-aim is automatically disabled while calibrating so the live aim doesn't fight the manual sliders.
-2. Move the **Pan** and **Tilt** sliders. The fixture follows in real time (white light at full dimmer for visibility).
-3. Click in the camera image where the beam dot is actually landing. The server records `(pan, tilt, px, py)` as a sample.
-4. If the dot is off-screen at the current pan/tilt, click **Off-screen** to record an off-screen sample (kept for completeness, excluded from the fit).
-5. Repeat for ≥6 in-frame samples spread across the camera view, then click **Fit**. The server solves the quadratic least-squares system separately for pan and for tilt and reports per-axis RMS error in degrees. The fitted coefficients are persisted to `backend/calibration/aim.json` (gitignored — venue-specific).
-6. Switch back to **Run**. The live tracker now drives the real fixture (or `MockDMX` if no adapter is present).
-
-`Clear` discards both samples and fitted coefficients and removes `aim.json`.
-
-### 4. Calibration files
-
-The deployed pipeline uses exactly one calibration file. It is venue-specific, written by the in-browser calibration UI, and gitignored so each install keeps its own measured values:
-
-| Path | Used by | Role |
-|------|---------|------|
-| `backend/calibration/aim.json` | **live system** (`server.py`) | **Gitignored.** Quadratic pixel-to-pan/tilt fit produced by the calibration UI. This is the only spatial transform on the live path: target pixel → quadratic → DMX pan/tilt. |
-
-The offline evaluation harness does not require any calibration file. It compares each method's predicted pixel coordinate to the ground-truth marker pixel directly, in image space.
-
-## Hardware Requirements
-
-1. **DMX moving head** with 16-bit pan/tilt control. Development used a 15-channel ZQ02360 / UKing 120W ring spot (`backend/config/fixture_zq02360_15ch.json`).
-2. **USB-to-DMX512 adapter** (Enttec Open DMX or compatible). Optional — the server runs without one and shows a synthetic beam in the UI.
-3. **Webcam** running at the browser. 720p is sufficient; the tracker downscales internally to 320 px wide for the motion stage.
-4. **Computer** with Python 3.10+ and Node.js 18+. CPU-only YOLOv8n inference clears 30 FPS comfortably on a modern laptop.
-
-## Software Dependencies
-
-**Backend (Python 3.10+):**
-
-* `fastapi` + `uvicorn[standard]` — WebSocket server.
-* `opencv-python` — camera capture, frame differencing, Farneback dense flow.
-* `ultralytics` — YOLOv8-nano detection and ByteTrack multi-object tracking.
-* `torch` — runtime for `ultralytics` (CPU or CUDA).
-* `numpy` — math and the pixel-to-pan/tilt least-squares fit.
-* `pyserial` — USB-to-DMX512 serial.
-* `matplotlib` — evaluation figures.
-
-**Frontend (Node 18+):**
-
-* `react`, `react-dom` (React 19).
-* `gsap` — entrance choreography and the lock-on brightness pulse.
-* `vite`, `@vitejs/plugin-react`, `typescript`.
+See `backend/evaluation/` for the offline evaluation harness used to reproduce the paper's results.
