@@ -10,9 +10,10 @@ __pycache__/
 dist/
 build/
 
-# IDE
+# IDE / editor
 .vscode/
 .idea/
+.claude/
 
 # Environment
 .env

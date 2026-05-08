@@ -1,5 +1,7 @@
 # VisionBeam
 
+![VisionBeam operator console in run mode, showing two tracked people and one locked target with simulated beam](console.png)
+
 ## Introduction
 
 VisionBeam is a vision-driven autonomous light fixture that finds the most active person in a room and follows them in real time. There are no body-worn beacons, no pre-programmed cues, and no specialized cameras. A webcam in the browser sends frames to a Python server, the server runs a hybrid YOLOv8 + ByteTrack + masked motion-heatmap tracker, and the resulting target pixel is mapped to fixture pan/tilt and pushed out over USB-to-DMX512.
@@ -26,7 +28,6 @@ backend/                            # Python: tracker, calibration, DMX, FastAPI
 ├── calibration/
 │   └── aim.json                    # Pixel->pan/tilt calibration (gitignored, written by UI)
 ├── config/
-│   ├── fixture_default.json        # Generic 8-channel moving head
 │   └── fixture_zq02360_15ch.json   # 15-channel ZQ02360 / UKing 120W ring spot used in development
 ├── data/                           # Recorded clips, ground truth, figures (gitignored, regenerable)
 └── results/                        # Per-clip and summary CSVs from evaluate.py (gitignored)
@@ -213,7 +214,7 @@ Full numbers, caveats, and discussion are in the writeup on Overleaf.
 
 ## Hardware Requirements
 
-1. **DMX moving head** with 16-bit pan/tilt control. Development used a 15-channel ZQ02360 / UKing 120W ring spot (`backend/config/fixture_zq02360_15ch.json`); a generic 8-channel profile is also provided.
+1. **DMX moving head** with 16-bit pan/tilt control. Development used a 15-channel ZQ02360 / UKing 120W ring spot (`backend/config/fixture_zq02360_15ch.json`).
 2. **USB-to-DMX512 adapter** (Enttec Open DMX or compatible). Optional — the server runs without one and shows a synthetic beam in the UI.
 3. **Webcam** running at the browser. 720p is sufficient; the tracker downscales internally to 320 px wide for the motion stage.
 4. **Computer** with Python 3.10+ and Node.js 18+. CPU-only YOLOv8n inference clears 30 FPS comfortably on a modern laptop.
