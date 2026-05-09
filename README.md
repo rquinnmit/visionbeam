@@ -50,7 +50,11 @@ frontend/                           # Vite + React + TypeScript browser client
 
 ```
 
-The CVPR-style writeup of this project lives on Overleaf.
+## Paper
+
+The CVPR-style writeup of this project is included in the repo at [`paper/VisionBeam.pdf`](paper/VisionBeam.pdf). Individual page renders live alongside it in [`paper/`](paper/).
+
+[![VisionBeam paper preview — all nine pages laid out as a 3x3 grid](paper/preview.png)](paper/VisionBeam.pdf)
 
 ## How the live system fits together
 
@@ -210,7 +214,7 @@ Across 20 clips (4 conditions × 5 reps), the dataset shows:
 * **Hybrid degrades the least under adversity.** From ambient to fixture-active lighting, hybrid's accuracy worsens by 48% and its jitter by 14% — the smallest relative degradation of any method. Frame differencing and Farneback flow more than double in jitter. Detection's accuracy slope is +55%.
 * **Hybrid sustains real-time processing speed** (~67 FPS, ~1.8× detection-only) thanks to running YOLO every other frame and reusing ByteTrack predictions in between.
 
-Full numbers, caveats, and discussion are in the writeup on Overleaf.
+Full numbers, caveats, and discussion are in the writeup at [`paper/VisionBeam.pdf`](paper/VisionBeam.pdf).
 
 ## Hardware Requirements
 
